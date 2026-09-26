@@ -1,0 +1,20 @@
+mapping_id,source_system,source_object,source_column,source_type,target_layer,target_table,target_column,target_type,transformation_rule,null_handling,dq_rule,severity,key_type,scd_type,comments,status
+STTM-PL-01,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,production_log_id,BIGINT,silver,mes_production_log,production_log_id,BIGINT,cast to bigint,reject,key_not_null,ERROR,PK,,Business key from MES identity column,Approved
+STTM-PL-02,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,order_id,VARCHAR(40),silver,mes_production_log,order_id,STRING,trim(upper(x)),keep null,,,FK,,FK to ERP production order (not enforced; late orders allowed),Approved
+STTM-PL-03,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,machine_id,VARCHAR(20),silver,mes_production_log,machine_id,STRING,trim(upper(x)) — profiling P-01 found padded/lower-case ids,reject,machine_not_null,ERROR,FK,,FK to dim_machine,Approved
+STTM-PL-04,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,product_id,VARCHAR(20),silver,mes_production_log,product_id,STRING,trim(upper(x)),reject,machine_not_null,ERROR,FK,,FK to dim_product,Approved
+STTM-PL-05,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,shift_code,CHAR(1),silver,mes_production_log,shift_code,STRING,trim(upper(x)),default 'UNKNOWN',shift_in_domain,WARN,attribute,,Domain A/B/C/UNKNOWN,Approved
+STTM-PL-06,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,start_ts,DATETIME2,silver,mes_production_log,start_ts,TIMESTAMP,cast to timestamp (UTC),reject via end_after_start,end_after_start,ERROR,attribute,,Production day = to_date(start_ts),Approved
+STTM-PL-07,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,end_ts,DATETIME2,silver,mes_production_log,end_ts,TIMESTAMP,cast to timestamp (UTC),keep null (run in progress),end_after_start,ERROR,attribute,,,Approved
+STTM-PL-08,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,units_produced,INT,silver,mes_production_log,units_produced,INT,cast to int,reject,non_negative_units,ERROR,measure,,,Approved
+STTM-PL-09,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,units_scrapped,INT,silver,mes_production_log,units_scrapped,INT,cast to int,default 0,scrap_not_above_produced,ERROR,measure,,Profiling P-03,Approved
+STTM-PL-10,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,operator_id,VARCHAR(20),silver,mes_production_log,operator_id,STRING,trim(upper(x)),keep null,,,attribute,,Pseudonymous id only — no names (doc 09),Approved
+STTM-PL-11,MES SQL Server,cdc.fn_cdc_get_all_changes_dbo_production_log,modified_at,DATETIME2,silver,mes_production_log,source_modified_at,TIMESTAMP,rename + cast,keep null,,,audit,,,Approved
+STTM-PL-12,MES SQL Server,CDC metadata,__$start_lsn,BINARY(10),silver,mes_production_log,cdc_start_lsn,STRING,CONVERT(VARCHAR(22)... 1) in ADF -> fixed-width hex,n/a,,,audit,,Watermark + ordering,Approved
+STTM-PL-13,MES SQL Server,CDC metadata,__$seqval,BINARY(10),silver,mes_production_log,cdc_seqval,STRING,hex string,n/a,,,audit,,Order within transaction,Approved
+STTM-PL-14,MES SQL Server,CDC metadata,__$operation,INT,silver,mes_production_log,cdc_operation,STRING,as is (1 delete / 2 insert / 4 update),n/a,,,audit,,,Approved
+STTM-PL-15,derived,,cdc_start_lsn + cdc_seqval,,silver,mes_production_log,_sequence,STRING,concat_ws('|' lsn seqval); latest per key wins; MERGE only if newer,n/a,,,audit,,Replay / out-of-order safety,Approved
+STTM-PL-16,derived,,cdc_operation,,silver,mes_production_log,_is_deleted,BOOLEAN,cdc_operation = 1 (soft delete),n/a,,,audit,,Gold excludes deleted rows,Approved
+STTM-PL-17,ADF/bronze lineage,,file path,,silver,mes_production_log,_ingestion_run_id,STRING,regexp run_id=... from file path,n/a,,,audit,,Links to ctl.ingestion_run_history,Approved
+STTM-PL-18,framework,,,,silver,mes_production_log,_dq_warnings,ARRAY<STRING>,names of failed WARN rules,empty array,,,audit,,,Approved
+STTM-PL-19,framework,,,,silver,mes_production_log,_pipeline_run_id,STRING,Databricks run id,n/a,,,audit,,,Approved
