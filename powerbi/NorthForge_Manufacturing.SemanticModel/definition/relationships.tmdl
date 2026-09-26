@@ -1,0 +1,71 @@
+relationship r01_FactProductionDaily_date_key
+	fromColumn: 'Fact Production Daily'.date_key
+	toColumn: Date.date_key
+
+relationship r02_FactProductionDaily_plant_sk
+	fromColumn: 'Fact Production Daily'.plant_sk
+	toColumn: Plant.plant_sk
+
+relationship r03_FactProductionDaily_machine_sk
+	fromColumn: 'Fact Production Daily'.machine_sk
+	toColumn: Machine.machine_sk
+
+relationship r04_FactProductionDaily_product_sk
+	fromColumn: 'Fact Production Daily'.product_sk
+	toColumn: Product.product_sk
+
+relationship r05_FactMachineDaily_date_key
+	fromColumn: 'Fact Machine Daily'.date_key
+	toColumn: Date.date_key
+
+relationship r06_FactMachineDaily_plant_sk
+	fromColumn: 'Fact Machine Daily'.plant_sk
+	toColumn: Plant.plant_sk
+
+relationship r07_FactMachineDaily_machine_sk
+	fromColumn: 'Fact Machine Daily'.machine_sk
+	toColumn: Machine.machine_sk
+
+relationship r08_FactQualityInspection_date_key
+	fromColumn: 'Fact Quality Inspection'.date_key
+	toColumn: Date.date_key
+
+relationship r09_FactQualityInspection_machine_sk
+	fromColumn: 'Fact Quality Inspection'.machine_sk
+	toColumn: Machine.machine_sk
+
+relationship r10_FactQualityInspection_product_sk
+	fromColumn: 'Fact Quality Inspection'.product_sk
+	toColumn: Product.product_sk
+
+relationship r11_FactQualityInspection_defect_code
+	fromColumn: 'Fact Quality Inspection'.defect_code
+	toColumn: 'Defect Type'.defect_code
+
+relationship r12_FactMaintenanceEvent_reported_date_key
+	fromColumn: 'Fact Maintenance Event'.reported_date_key
+	toColumn: Date.date_key
+
+relationship r13_FactMaintenanceEvent_machine_sk
+	fromColumn: 'Fact Maintenance Event'.machine_sk
+	toColumn: Machine.machine_sk
+
+relationship r14_FactSupplierDelivery_date_key
+	fromColumn: 'Fact Supplier Delivery'.date_key
+	toColumn: Date.date_key
+
+relationship r15_FactSupplierDelivery_supplier_sk
+	fromColumn: 'Fact Supplier Delivery'.supplier_sk
+	toColumn: Supplier.supplier_sk
+
+relationship r16_FactSupplierDelivery_plant_sk
+	fromColumn: 'Fact Supplier Delivery'.plant_sk
+	toColumn: Plant.plant_sk
+
+relationship r17_ShopfloorStatus_plant_id
+	fromColumn: 'Shopfloor Status'.plant_id
+	toColumn: Plant.plant_id
+
+relationship r18_ExecKPIMonthly_plant_id
+	fromColumn: 'Exec KPI Monthly'.plant_id
+	toColumn: Plant.plant_id

@@ -1,0 +1,127 @@
+/// GRAIN: production_date x machine x product. Incremental refresh: 3 years kept, last 10 days refreshed (covers late MES corrections via CDC).
+table 'Fact Production Daily'
+
+	column date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DATE_KEY
+
+	column production_date
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		isHidden
+		summarizeBy: none
+		sourceColumn: PRODUCTION_DATE
+
+	column plant_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PLANT_SK
+
+	column machine_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MACHINE_SK
+
+	column product_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PRODUCT_SK
+
+	column production_runs
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PRODUCTION_RUNS
+
+	column units_produced
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: UNITS_PRODUCED
+
+	column units_scrapped
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: UNITS_SCRAPPED
+
+	column units_good
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: UNITS_GOOD
+
+	column run_minutes
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: RUN_MINUTES
+
+	column ideal_units
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: IDEAL_UNITS
+
+	column inspections
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: INSPECTIONS
+
+	column sampled_units
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: SAMPLED_UNITS
+
+	column defect_units
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DEFECT_UNITS
+
+	column failed_inspections
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: FAILED_INSPECTIONS
+
+	column _gold_updated_ts
+		dataType: dateTime
+		isHidden
+		summarizeBy: none
+		sourceColumn: _GOLD_UPDATED_TS
+
+	partition 'Fact Production Daily' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_PRODUCTION_DAILY", Kind = "Table"]}[Data],
+				    Filtered = Table.SelectRows(Obj, each [PRODUCTION_DATE] >= Date.From(RangeStart) and [PRODUCTION_DATE] < Date.From(RangeEnd))  // folds to Snowflake WHERE
+				in
+				    Filtered
+
+	refreshPolicy
+		policyType: basic
+		rollingWindowGranularity: year
+		rollingWindowPeriods: 3
+		incrementalGranularity: day
+		incrementalPeriods: 10
+		sourceExpression =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_PRODUCTION_DAILY", Kind = "Table"]}[Data],
+				    Filtered = Table.SelectRows(Obj, each [PRODUCTION_DATE] >= Date.From(RangeStart) and [PRODUCTION_DATE] < Date.From(RangeEnd))  // folds to Snowflake WHERE
+				in
+				    Filtered

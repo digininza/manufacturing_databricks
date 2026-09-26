@@ -1,0 +1,12 @@
+{
+    "name": "DS_Oracle_ERP",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "LS_Oracle_ERP",
+            "type": "LinkedServiceReference"
+        },
+        "type": "OracleTable",
+        "schema": [],
+        "typeProperties": {}
+    }
+}

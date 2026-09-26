@@ -1,0 +1,154 @@
+/// Home table for all measures (keeps the field list clean).
+table _Measures
+
+	measure 'Units Produced' = SUM('Fact Production Daily'[units_produced])
+		formatString: #,0
+		displayFolder: Production
+
+	measure 'Units Good' = SUM('Fact Production Daily'[units_good])
+		formatString: #,0
+		displayFolder: Production
+
+	measure 'Units Scrapped' = SUM('Fact Production Daily'[units_scrapped])
+		formatString: #,0
+		displayFolder: Production
+
+	/// Scrapped / produced.
+	measure 'Scrap Rate %' = DIVIDE([Units Scrapped], [Units Produced])
+		formatString: 0.00%
+		displayFolder: Production
+
+	measure 'Production Runs' = SUM('Fact Production Daily'[production_runs])
+		formatString: #,0
+		displayFolder: Production
+
+	measure 'Run Hours' = DIVIDE(SUM('Fact Production Daily'[run_minutes]), 60)
+		formatString: #,0.0
+		displayFolder: Production
+
+	/// Units possible at the standard cycle time (as of the production day).
+	measure 'Ideal Units' = SUM('Fact Production Daily'[ideal_units])
+		formatString: #,0
+		displayFolder: Production
+
+	measure 'Units Produced PY' = CALCULATE([Units Produced], SAMEPERIODLASTYEAR('Date'[calendar_date]))
+		formatString: #,0
+		displayFolder: Production\Time Intelligence
+
+	measure 'Units Produced YoY %' = DIVIDE([Units Produced] - [Units Produced PY], [Units Produced PY])
+		formatString: 0.0%
+		displayFolder: Production\Time Intelligence
+
+	measure 'Units Produced MTD' = TOTALMTD([Units Produced], 'Date'[calendar_date])
+		formatString: #,0
+		displayFolder: Production\Time Intelligence
+
+	measure 'Sampled Units' = SUM('Fact Production Daily'[sampled_units])
+		formatString: #,0
+		displayFolder: Quality
+
+	measure 'Defect Units' = SUM('Fact Production Daily'[defect_units])
+		formatString: #,0
+		displayFolder: Quality
+
+	/// Share of sampled units with no defect.
+	measure 'First Pass Yield %' = 1 - DIVIDE([Defect Units], [Sampled Units])
+		formatString: 0.00%
+		displayFolder: Quality
+
+	/// Defective parts per million sampled.
+	measure 'Defects PPM' = DIVIDE([Defect Units], [Sampled Units]) * 1000000
+		formatString: #,0
+		displayFolder: Quality
+
+	measure 'Inspection Fail Rate %' = DIVIDE(SUM('Fact Production Daily'[failed_inspections]), SUM('Fact Production Daily'[inspections]))
+		formatString: 0.0%
+		displayFolder: Quality
+
+	measure 'Planned Minutes' = SUM('Fact Machine Daily'[planned_minutes])
+		formatString: #,0
+		displayFolder: OEE
+
+	measure 'Downtime Minutes' = SUM('Fact Machine Daily'[downtime_minutes])
+		formatString: #,0
+		displayFolder: OEE
+
+	/// Available time / planned time.
+	measure 'Availability %' = DIVIDE(SUM('Fact Machine Daily'[available_minutes]), [Planned Minutes])
+		formatString: 0.0%
+		displayFolder: OEE
+
+	/// Actual output / output possible at standard cycle time, capped at 100%.
+	measure 'Performance %' = MIN(1, DIVIDE(SUM('Fact Machine Daily'[units_produced]), SUM('Fact Machine Daily'[ideal_units])))
+		formatString: 0.0%
+		displayFolder: OEE
+
+	/// Good units / all units.
+	measure 'Quality %' = DIVIDE(SUM('Fact Machine Daily'[units_good]), SUM('Fact Machine Daily'[units_produced]))
+		formatString: 0.0%
+		displayFolder: OEE
+
+	/// Overall Equipment Effectiveness. Re-derived from summed components at every level - never an average of daily OEE.
+	measure 'OEE %' = [Availability %] * [Performance %] * [Quality %]
+		formatString: 0.0%
+		displayFolder: OEE
+
+	/// World-class benchmark used as the plant target.
+	measure 'OEE Target' = 0.85
+		formatString: 0%
+		displayFolder: OEE
+
+	measure 'OEE vs Target' = [OEE %] - [OEE Target]
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: OEE
+
+	measure 'OEE 7D Rolling' = CALCULATE([OEE %], DATESINPERIOD('Date'[calendar_date], MAX('Date'[calendar_date]), -7, DAY))
+		formatString: 0.0%
+		displayFolder: OEE
+
+	/// Minutes with any sensor outside alarm limits (IoT stream).
+	measure 'Sensor Anomaly Minutes' = SUM('Fact Machine Daily'[anomaly_minutes])
+		formatString: #,0
+		displayFolder: OEE
+
+	measure 'Breakdowns' = CALCULATE(COUNTROWS('Fact Maintenance Event'), 'Fact Maintenance Event'[work_type] = "BREAKDOWN", 'Fact Maintenance Event'[status] = "COMPLETED")
+		formatString: #,0
+		displayFolder: Maintenance
+
+	/// Mean time to repair.
+	measure 'MTTR (min)' = DIVIDE(CALCULATE(SUM('Fact Maintenance Event'[repair_minutes]), 'Fact Maintenance Event'[work_type] = "BREAKDOWN", 'Fact Maintenance Event'[status] = "COMPLETED"), [Breakdowns])
+		formatString: #,0
+		displayFolder: Maintenance
+
+	/// Mean time between failures.
+	measure 'MTBF (hrs)' = DIVIDE(DIVIDE(SUM('Fact Machine Daily'[run_minutes]), 60), [Breakdowns])
+		formatString: #,0.0
+		displayFolder: Maintenance
+
+	measure 'Open Work Orders' = CALCULATE(COUNTROWS('Fact Maintenance Event'), 'Fact Maintenance Event'[status] <> "COMPLETED")
+		formatString: #,0
+		displayFolder: Maintenance
+
+	/// Scrap x unit cost of the product version valid on the production day (SCD2 via product_sk).
+	measure 'Scrap Cost' = SUMX('Fact Production Daily', 'Fact Production Daily'[units_scrapped] * RELATED(Product[unit_cost]))
+		formatString: "$"#,0
+		displayFolder: Cost
+
+	measure 'Supplier Reject Rate %' = DIVIDE(SUM('Fact Supplier Delivery'[rejected_qty]), SUM('Fact Supplier Delivery'[delivered_qty]))
+		formatString: 0.00%
+		displayFolder: Supplier
+
+	/// When gold was last published - shown on every page footer.
+	measure 'Data As Of' = MAX('Fact Production Daily'[_gold_updated_ts])
+		formatString: yyyy-mm-dd hh:nn
+		displayFolder: Operational
+
+	column Placeholder
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: [Placeholder]
+
+	partition _Measures = calculated
+		mode: import
+		source = ROW("Placeholder", BLANK())

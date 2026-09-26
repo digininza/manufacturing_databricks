@@ -1,0 +1,78 @@
+/// GRAIN: one work order (accumulating snapshot).
+table 'Fact Maintenance Event'
+
+	column work_order_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: WORK_ORDER_ID
+
+	column reported_date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: REPORTED_DATE_KEY
+
+	column machine_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MACHINE_SK
+
+	column work_type
+		dataType: string
+		summarizeBy: none
+		sourceColumn: WORK_TYPE
+
+	column priority
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PRIORITY
+
+	column status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: STATUS
+
+	column reported_at
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: REPORTED_AT
+
+	column completed_at
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: COMPLETED_AT
+
+	column downtime_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DOWNTIME_MINUTES
+
+	column repair_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: REPAIR_MINUTES
+
+	column response_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: RESPONSE_MINUTES
+
+	column technician
+		dataType: string
+		summarizeBy: none
+		sourceColumn: TECHNICIAN
+
+	partition 'Fact Maintenance Event' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_MAINTENANCE_EVENT", Kind = "Table"]}[Data]
+				in
+				    Obj

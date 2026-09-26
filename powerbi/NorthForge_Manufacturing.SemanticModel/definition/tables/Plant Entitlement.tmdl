@@ -1,0 +1,24 @@
+/// Same entitlement table the Snowflake row access policy uses -> ONE source of truth for Import RLS and DirectQuery RLS.
+table 'Plant Entitlement'
+	isHidden
+
+	column user_email
+		dataType: string
+		summarizeBy: none
+		sourceColumn: USER_EMAIL
+
+	column plant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_ID
+
+	partition 'Plant Entitlement' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "SECURITY", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "PLANT_ENTITLEMENT", Kind = "Table"]}[Data]
+				in
+				    Obj

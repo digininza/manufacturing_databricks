@@ -1,0 +1,12 @@
+{
+    "name": "LS_Rest_CMMS",
+    "properties": {
+        "type": "RestService",
+        "description": "CMMS (maintenance) REST API. OAuth2 bearer token obtained per run by a Web activity (client secret in Key Vault) and passed as a header.",
+        "typeProperties": {
+            "url": "https://cmms.example.com/api/v1/",
+            "enableServerCertificateValidation": true,
+            "authenticationType": "Anonymous"
+        }
+    }
+}

@@ -1,0 +1,69 @@
+/// Calendar. Marked as the model date table so time-intelligence DAX works.
+table 'Date'
+	dataCategory: Time
+
+	column date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DATE_KEY
+
+	column calendar_date
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		summarizeBy: none
+		sourceColumn: CALENDAR_DATE
+		isKey
+
+	column year
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: YEAR
+
+	column quarter
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: QUARTER
+
+	column month
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MONTH
+
+	column month_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MONTH_NAME
+		sortByColumn: month
+
+	column iso_week
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: ISO_WEEK
+
+	column day_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: DAY_NAME
+
+	column is_weekend
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: IS_WEEKEND
+
+	column fiscal_year
+		dataType: string
+		summarizeBy: none
+		sourceColumn: FISCAL_YEAR
+
+	partition 'Date' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_DATE", Kind = "Table"]}[Data]
+				in
+				    Obj

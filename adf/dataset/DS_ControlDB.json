@@ -1,0 +1,12 @@
+{
+    "name": "DS_ControlDB",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "LS_AzureSql_ControlDB",
+            "type": "LinkedServiceReference"
+        },
+        "type": "AzureSqlTable",
+        "schema": [],
+        "typeProperties": {}
+    }
+}

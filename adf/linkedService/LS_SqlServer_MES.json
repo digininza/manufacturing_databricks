@@ -1,0 +1,27 @@
+{
+    "name": "LS_SqlServer_MES",
+    "properties": {
+        "type": "SqlServer",
+        "description": "On-prem MES SQL Server via self-hosted IR. Read-only CDC login; password from Key Vault.",
+        "typeProperties": {
+            "server": "MES-SQL01.northforge.local",
+            "database": "MES_PROD",
+            "encrypt": "mandatory",
+            "trustServerCertificate": false,
+            "authenticationType": "SQL",
+            "userName": "svc_adf_mes",
+            "password": {
+                "type": "AzureKeyVaultSecret",
+                "store": {
+                    "referenceName": "LS_KeyVault",
+                    "type": "LinkedServiceReference"
+                },
+                "secretName": "mes-sqlserver-password"
+            }
+        },
+        "connectVia": {
+            "referenceName": "IR-SelfHosted-OnPrem",
+            "type": "IntegrationRuntimeReference"
+        }
+    }
+}

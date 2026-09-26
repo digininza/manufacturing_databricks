@@ -1,0 +1,37 @@
+{
+    "name": "DS_ADLS_Csv",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "LS_ADLS_Gen2",
+            "type": "LinkedServiceReference"
+        },
+        "parameters": {
+            "container": {
+                "type": "string"
+            },
+            "folder": {
+                "type": "string"
+            }
+        },
+        "type": "DelimitedText",
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "fileSystem": {
+                    "value": "@dataset().container",
+                    "type": "Expression"
+                },
+                "folderPath": {
+                    "value": "@dataset().folder",
+                    "type": "Expression"
+                }
+            },
+            "columnDelimiter": ",",
+            "escapeChar": "\\",
+            "quoteChar": "\"",
+            "firstRowAsHeader": true,
+            "encodingName": "UTF-8"
+        },
+        "schema": []
+    }
+}

@@ -1,0 +1,32 @@
+table 'Defect Type'
+
+	column defect_code
+		dataType: string
+		summarizeBy: none
+		sourceColumn: DEFECT_CODE
+
+	column defect_description
+		dataType: string
+		summarizeBy: none
+		sourceColumn: DEFECT_DESCRIPTION
+
+	column defect_category
+		dataType: string
+		summarizeBy: none
+		sourceColumn: DEFECT_CATEGORY
+
+	column severity
+		dataType: string
+		summarizeBy: none
+		sourceColumn: SEVERITY
+
+	partition 'Defect Type' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_DEFECT_TYPE", Kind = "Table"]}[Data]
+				in
+				    Obj

@@ -1,0 +1,12 @@
+{
+    "name": "DS_SqlServer_MES",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "LS_SqlServer_MES",
+            "type": "LinkedServiceReference"
+        },
+        "type": "SqlServerTable",
+        "schema": [],
+        "typeProperties": {}
+    }
+}

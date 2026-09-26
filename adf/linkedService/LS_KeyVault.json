@@ -1,0 +1,10 @@
+{
+    "name": "LS_KeyVault",
+    "properties": {
+        "type": "AzureKeyVault",
+        "description": "All secrets (DB passwords, API client secret, alert webhook). ADF managed identity has 'Key Vault Secrets User'.",
+        "typeProperties": {
+            "baseUrl": "https://kv-nf-mfg-dev.vault.azure.net/"
+        }
+    }
+}

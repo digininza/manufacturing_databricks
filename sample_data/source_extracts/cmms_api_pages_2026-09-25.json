@@ -1,0 +1,67 @@
+[
+  {
+    "meta": {
+      "page": 1,
+      "page_size": 2,
+      "total_count": 3
+    },
+    "data": [
+      {
+        "work_order_id": "WO-50003",
+        "machine_id": "M-P02-04",
+        "work_type": "CORRECTIVE",
+        "priority": "P2",
+        "status": "COMPLETED",
+        "reported_at": "2026-09-24 20:00:00",
+        "started_at": "2026-09-24 20:15:00",
+        "completed_at": "2026-09-25 02:00:00",
+        "downtime_minutes": 210,
+        "technician": "p. novak",
+        "updated_at": "2026-09-25 02:00:00"
+      },
+      {
+        "work_order_id": "WO-50005",
+        "machine_id": "M-P01-03",
+        "work_type": "BREAKDOWN",
+        "priority": "P1",
+        "status": "COMPLETED",
+        "reported_at": "2026-09-25 09:00:00",
+        "started_at": "2026-09-25 09:15:00",
+        "completed_at": "2026-09-25 10:15:00",
+        "downtime_minutes": 60,
+        "technician": "p. novak",
+        "updated_at": "2026-09-25 10:16:00"
+      }
+    ]
+  },
+  {
+    "meta": {
+      "page": 2,
+      "page_size": 2,
+      "total_count": 3
+    },
+    "data": [
+      {
+        "work_order_id": "WO-50006",
+        "machine_id": "M-P03-03",
+        "work_type": "PREVENTIVE",
+        "priority": "P3",
+        "status": "COMPLETED",
+        "reported_at": "2026-09-25 06:00:00",
+        "started_at": "2026-09-25 06:15:00",
+        "completed_at": "2026-09-25 06:45:00",
+        "downtime_minutes": 30,
+        "technician": "a. kumar",
+        "updated_at": "2026-09-25 06:46:00"
+      }
+    ]
+  },
+  {
+    "meta": {
+      "page": 3,
+      "page_size": 2,
+      "total_count": 3
+    },
+    "data": []
+  }
+]

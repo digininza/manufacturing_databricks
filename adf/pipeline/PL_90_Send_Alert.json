@@ -1,0 +1,91 @@
+{
+    "name": "PL_90_Send_Alert",
+    "properties": {
+        "description": "Single alert path for all pipelines: Logic App (URL with SAS in Key Vault) -> Email to on-call DL + Teams channel. Databricks uses the SAME Logic App.",
+        "activities": [
+            {
+                "name": "Get_Webhook_Url",
+                "type": "WebActivity",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:05:00",
+                    "retry": 3,
+                    "retryIntervalInSeconds": 120,
+                    "secureOutput": true,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "GET",
+                    "url": {
+                        "value": "@concat(pipeline().globalParameters.gp_keyvault_url, '/secrets/logicapp-alert-webhook-url?api-version=7.4')",
+                        "type": "Expression"
+                    },
+                    "authentication": {
+                        "type": "MSI",
+                        "resource": "https://vault.azure.net"
+                    }
+                }
+            },
+            {
+                "name": "Post_Alert",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "Get_Webhook_Url",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:05:00",
+                    "retry": 3,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": true
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": {
+                        "value": "@activity('Get_Webhook_Url').output.value",
+                        "type": "Expression"
+                    },
+                    "headers": {
+                        "Content-Type": "application/json"
+                    },
+                    "body": {
+                        "value": "@json(concat('{\"platform\":\"ADF\",\"environment\":\"', pipeline().globalParameters.gp_environment, '\",\"severity\":\"', pipeline().parameters.severity, '\",\"pipeline_name\":\"', pipeline().parameters.pipeline_name, '\",\"entity_name\":\"', pipeline().parameters.entity_name, '\",\"adf_run_id\":\"', pipeline().parameters.adf_run_id, '\",\"data_factory\":\"', pipeline().DataFactory, '\",\"message\":\"', replace(replace(pipeline().parameters.message, '\"', ''''), decodeUriComponent('%0A'), ' '), '\",\"raised_at_utc\":\"', utcNow(), '\"}'))",
+                        "type": "Expression"
+                    }
+                }
+            }
+        ],
+        "parameters": {
+            "severity": {
+                "type": "string",
+                "defaultValue": "HIGH"
+            },
+            "pipeline_name": {
+                "type": "string"
+            },
+            "entity_name": {
+                "type": "string",
+                "defaultValue": ""
+            },
+            "message": {
+                "type": "string"
+            },
+            "adf_run_id": {
+                "type": "string"
+            }
+        },
+        "folder": {
+            "name": "90_Utilities"
+        },
+        "annotations": [
+            "alerting"
+        ]
+    }
+}

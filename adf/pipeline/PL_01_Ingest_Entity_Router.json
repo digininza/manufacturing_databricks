@@ -1,0 +1,214 @@
+{
+    "name": "PL_01_Ingest_Entity_Router",
+    "properties": {
+        "description": "Routes one control-table row to the child pipeline for its source_type. New source TYPE = new case; new source TABLE = control-table row only.",
+        "activities": [
+            {
+                "name": "Route_By_Source_Type",
+                "type": "Switch",
+                "dependsOn": [],
+                "userProperties": [],
+                "typeProperties": {
+                    "on": {
+                        "value": "@pipeline().parameters.entity.source_type",
+                        "type": "Expression"
+                    },
+                    "cases": [
+                        {
+                            "value": "SQLSERVER_CDC",
+                            "activities": [
+                                {
+                                    "name": "Run_SqlServer_CDC",
+                                    "type": "ExecutePipeline",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "pipeline": {
+                                            "referenceName": "PL_10_Ingest_SqlServer_CDC",
+                                            "type": "PipelineReference"
+                                        },
+                                        "waitOnCompletion": true,
+                                        "parameters": {
+                                            "entity": {
+                                                "value": "@pipeline().parameters.entity",
+                                                "type": "Expression"
+                                            },
+                                            "batch_run_id": {
+                                                "value": "@pipeline().parameters.batch_run_id",
+                                                "type": "Expression"
+                                            },
+                                            "run_date": {
+                                                "value": "@pipeline().parameters.run_date",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "ORACLE_WATERMARK",
+                            "activities": [
+                                {
+                                    "name": "Run_Oracle_Incremental",
+                                    "type": "ExecutePipeline",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "pipeline": {
+                                            "referenceName": "PL_11_Ingest_Oracle",
+                                            "type": "PipelineReference"
+                                        },
+                                        "waitOnCompletion": true,
+                                        "parameters": {
+                                            "entity": {
+                                                "value": "@pipeline().parameters.entity",
+                                                "type": "Expression"
+                                            },
+                                            "batch_run_id": {
+                                                "value": "@pipeline().parameters.batch_run_id",
+                                                "type": "Expression"
+                                            },
+                                            "run_date": {
+                                                "value": "@pipeline().parameters.run_date",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "ORACLE_FULL",
+                            "activities": [
+                                {
+                                    "name": "Run_Oracle_Full",
+                                    "type": "ExecutePipeline",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "pipeline": {
+                                            "referenceName": "PL_11_Ingest_Oracle",
+                                            "type": "PipelineReference"
+                                        },
+                                        "waitOnCompletion": true,
+                                        "parameters": {
+                                            "entity": {
+                                                "value": "@pipeline().parameters.entity",
+                                                "type": "Expression"
+                                            },
+                                            "batch_run_id": {
+                                                "value": "@pipeline().parameters.batch_run_id",
+                                                "type": "Expression"
+                                            },
+                                            "run_date": {
+                                                "value": "@pipeline().parameters.run_date",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "REST_API",
+                            "activities": [
+                                {
+                                    "name": "Run_Rest_Api",
+                                    "type": "ExecutePipeline",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "pipeline": {
+                                            "referenceName": "PL_12_Ingest_RestApi",
+                                            "type": "PipelineReference"
+                                        },
+                                        "waitOnCompletion": true,
+                                        "parameters": {
+                                            "entity": {
+                                                "value": "@pipeline().parameters.entity",
+                                                "type": "Expression"
+                                            },
+                                            "batch_run_id": {
+                                                "value": "@pipeline().parameters.batch_run_id",
+                                                "type": "Expression"
+                                            },
+                                            "run_date": {
+                                                "value": "@pipeline().parameters.run_date",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "ADLS_FILE",
+                            "activities": [
+                                {
+                                    "name": "Run_ADLS_Files",
+                                    "type": "ExecutePipeline",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "pipeline": {
+                                            "referenceName": "PL_13_Ingest_ADLS_Files",
+                                            "type": "PipelineReference"
+                                        },
+                                        "waitOnCompletion": true,
+                                        "parameters": {
+                                            "entity": {
+                                                "value": "@pipeline().parameters.entity",
+                                                "type": "Expression"
+                                            },
+                                            "batch_run_id": {
+                                                "value": "@pipeline().parameters.batch_run_id",
+                                                "type": "Expression"
+                                            },
+                                            "run_date": {
+                                                "value": "@pipeline().parameters.run_date",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "defaultActivities": [
+                        {
+                            "name": "Unknown_Source_Type",
+                            "type": "Fail",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "message": {
+                                    "value": "@concat('Unknown source_type in control table: ', pipeline().parameters.entity.source_type)",
+                                    "type": "Expression"
+                                },
+                                "errorCode": "BAD_METADATA"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "parameters": {
+            "entity": {
+                "type": "object"
+            },
+            "batch_run_id": {
+                "type": "string"
+            },
+            "run_date": {
+                "type": "string"
+            }
+        },
+        "folder": {
+            "name": "00_Orchestration"
+        },
+        "annotations": [
+            "orchestration"
+        ]
+    }
+}

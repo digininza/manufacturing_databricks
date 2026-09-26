@@ -1,0 +1,7 @@
+delivery_id,supplier_id,supplier_name,material_code,plant_id,delivery_date,delivered_qty,rejected_qty,lot_number
+DLV-20260925-001,SUP-01,acme metals ltd,cu-c110-sheet,p02,2026-09-25,1619,0,lot-78807
+DLV-20260925-002,SUP-02,precision alloys gmbh,al-6061-bar,p01,2026-09-25,1083,1093,lot-30513
+DLV-20260925-003,SUP-03,polymer works sa,stl-1018-coil,p02,2026-09-25,1966,58,lot-25340
+DLV-20260925-004,SUP-01,acme metals ltd,pa66-gf30-resin,p01,2026-09-25,1032,30,lot-35969
+DLV-20260925-005,SUP-02,precision alloys gmbh,pa66-gf30-resin,p02,2026-09-25,1059,0,lot-73279
+DLV-20260924-001,SUP-01,acme metals ltd,pa66-gf30-resin,p01,2026-09-24,496,0,lot-37852

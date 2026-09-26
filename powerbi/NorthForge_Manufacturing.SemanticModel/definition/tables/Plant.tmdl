@@ -1,0 +1,40 @@
+/// DUAL storage: acts as Import for the star schema AND as DirectQuery when filtering the DirectQuery report tables (no limited relationships).
+table 'Plant'
+
+	column plant_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PLANT_SK
+
+	column plant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_ID
+
+	column plant_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_NAME
+
+	column city
+		dataType: string
+		summarizeBy: none
+		sourceColumn: CITY
+
+	column country_code
+		dataType: string
+		summarizeBy: none
+		sourceColumn: COUNTRY_CODE
+		dataCategory: Country
+
+	partition 'Plant' = m
+		mode: dual
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_PLANT", Kind = "Table"]}[Data]
+				in
+				    Obj

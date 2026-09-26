@@ -1,0 +1,85 @@
+{
+  "config": "{\"version\": \"5.43\", \"themeCollection\": {\"baseTheme\": {\"name\": \"CY24SU06\", \"version\": \"5.55\", \"type\": 2}}}",
+  "layoutOptimization": 0,
+  "resourcePackages": [],
+  "filters": "[]",
+  "sections": [
+    {
+      "name": "ReportSection0",
+      "displayName": "Executive Overview",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 0,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection1",
+      "displayName": "Plant OEE",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 1,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection2",
+      "displayName": "Machine Drill-down",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 2,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection3",
+      "displayName": "Quality & Defects",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 3,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection4",
+      "displayName": "Maintenance",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 4,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection5",
+      "displayName": "Supplier Quality",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 5,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    },
+    {
+      "name": "ReportSection6",
+      "displayName": "Shopfloor Live (DirectQuery)",
+      "displayOption": 1,
+      "filters": "[]",
+      "ordinal": 6,
+      "height": 720,
+      "width": 1280,
+      "visualContainers": [],
+      "config": "{}"
+    }
+  ]
+}

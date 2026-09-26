@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    mfg_setup_and_demo_data:
+      name: "[${var.environment}] mfg_setup_and_demo_data"
+      tags: {project: northforge-mfg, layer: setup}
+      parameters:
+        - {name: environment, default: "${var.environment}"}
+        - {name: day, default: "1"}
+      tasks:
+        - task_key: create_catalog_schemas
+          notebook_task:
+            notebook_path: ../../notebooks/00_setup/00_create_catalog_schemas.py
+        - task_key: simulate_adf_landing
+          depends_on: [{task_key: create_catalog_schemas}]
+          notebook_task:
+            notebook_path: ../../notebooks/00_setup/01_simulate_adf_landing.py

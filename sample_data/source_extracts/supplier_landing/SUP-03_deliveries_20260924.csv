@@ -1,0 +1,3 @@
+delivery_id,supplier_id,supplier_name,material_code,plant_id,delivery_date,delivered_qty,rejected_qty,lot_number
+DLV-20260924-003,SUP-03,polymer works sa,cu-c110-sheet,p01,2026-09-24,383,0,lot-98961
+DLV-20260924-006,SUP-03,polymer works sa,cu-c110-sheet,p02,2026-09-24,1578,0,lot-59612

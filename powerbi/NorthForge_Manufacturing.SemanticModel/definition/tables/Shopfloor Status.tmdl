@@ -1,0 +1,74 @@
+/// DirectQuery: hourly-published MES data must show without waiting for a dataset refresh; tiny result set; Snowflake row access policy filters per SSO user.
+table 'Shopfloor Status'
+
+	column plant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_ID
+
+	column line_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: LINE_ID
+
+	column machine_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MACHINE_ID
+
+	column machine_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MACHINE_NAME
+
+	column mes_status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MES_STATUS
+
+	column units_produced
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: UNITS_PRODUCED
+
+	column oee
+		dataType: double
+		formatString: 0.0%
+		summarizeBy: average
+		sourceColumn: OEE
+
+	column downtime_minutes
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: DOWNTIME_MINUTES
+
+	column anomaly_minutes
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: ANOMALY_MINUTES
+
+	column open_work_orders
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: OPEN_WORK_ORDERS
+
+	column health_rag
+		dataType: string
+		summarizeBy: none
+		sourceColumn: HEALTH_RAG
+
+	column data_as_of
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: DATA_AS_OF
+
+	partition 'Shopfloor Status' = m
+		mode: directQuery
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "REPORTING", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "VW_SHOPFLOOR_MACHINE_STATUS", Kind = "View"]}[Data]
+				in
+				    Obj

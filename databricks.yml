@@ -1,0 +1,66 @@
+####################################################################################
+# NorthForge Manufacturing Modernization — Databricks Asset Bundle
+#
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
+#   databricks bundle run      -t dev mfg_batch_pipeline
+#
+# All hosts / IDs are placeholders. No credentials in this repo: secrets live in
+# Azure Key Vault and are read through the Key Vault-backed secret scope.
+####################################################################################
+
+bundle:
+  name: northforge_manufacturing
+
+variables:
+  environment:
+    description: Environment name (selects configs/<env>.yml)
+    default: dev
+  notification_email:
+    description: On-call distribution list (never a personal address)
+    default: mfg-data-platform-alerts@example.com
+  node_type:
+    default: Standard_D4ds_v5
+  spark_version:
+    default: 15.4.x-scala2.12
+  powerbi_workspace_id:
+    default: REPLACE_WITH_PBI_WORKSPACE_ID
+  powerbi_dataset_id:
+    default: REPLACE_WITH_PBI_DATASET_ID
+
+include:
+  - resources/jobs/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-REPLACE_DEV.azuredatabricks.net
+    variables:
+      environment: dev
+
+  test:
+    workspace:
+      host: https://adb-REPLACE_TEST.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/test
+    variables:
+      environment: test
+    run_as:
+      service_principal_name: REPLACE_WITH_TEST_SP_APP_ID
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-REPLACE_PROD.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/prod
+    variables:
+      environment: prod
+      node_type: Standard_D8ds_v5
+    run_as:
+      service_principal_name: REPLACE_WITH_PROD_SP_APP_ID   # sp-nf-mfg-databricks-jobs
+    permissions:
+      - group_name: grp-nf-mfg-platform-admins
+        level: CAN_MANAGE
+      - group_name: grp-nf-mfg-data-engineers
+        level: CAN_VIEW

@@ -1,0 +1,14 @@
+/// Plant managers see only their plant(s). Entitlements come from Snowflake SECURITY.PLANT_ENTITLEMENT
+/// (the same table behind the Snowflake row access policy used by the DirectQuery tables).
+role 'Plant Scoped'
+	modelPermission: read
+
+	tablePermission Plant =
+			VAR _me = UPPER(USERPRINCIPALNAME())
+			VAR _plants = CALCULATETABLE(VALUES('Plant Entitlement'[plant_id]), 'Plant Entitlement'[user_email] = _me)
+			RETURN "*" IN _plants || [plant_id] IN _plants
+
+	tablePermission Machine =
+			VAR _me = UPPER(USERPRINCIPALNAME())
+			VAR _plants = CALCULATETABLE(VALUES('Plant Entitlement'[plant_id]), 'Plant Entitlement'[user_email] = _me)
+			RETURN "*" IN _plants || [plant_id] IN _plants

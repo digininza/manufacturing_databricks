@@ -1,0 +1,15 @@
+{
+  "run_id": "cmms_work_order_20260924_01",
+  "entity_name": "cmms_work_order",
+  "source_system": "CMMS_API",
+  "load_pattern": "REST_API",
+  "load_date": "2026-09-24",
+  "window_start": "1900-01-01T00:00:00Z",
+  "window_end": "2026-09-24 20:16:00",
+  "source_count": 4,
+  "rows_read": 4,
+  "rows_copied": 4,
+  "rows_skipped": 0,
+  "status": "VALIDATED",
+  "adf_pipeline_run_id": "adf-cmms_work_order_20260924_01"
+}

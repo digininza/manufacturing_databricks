@@ -1,0 +1,7 @@
+{
+    "name": "IR-SelfHosted-OnPrem",
+    "properties": {
+        "type": "SelfHosted",
+        "description": "Self-hosted IR on 2 HA nodes in the plant data centre. Reaches on-prem SQL Server (MES) and Oracle (ERP) over the private network; outbound 443 only to Azure (no inbound firewall rules)."
+    }
+}

@@ -1,0 +1,228 @@
+# =============================================================================
+# SOURCE REGISTRY — the Databricks half of the metadata-driven framework.
+#
+# The ADF half lives in the Azure SQL control DB (ctl.ingestion_control, see
+# sql/control_db/03_seed_ingestion_control.sql). The two share the SAME
+# entity_name, so an entity can be traced end-to-end:
+#
+#   ctl.ingestion_control.entity_name  (ADF: how to extract it)
+#        == source_registry.<entity>   (Databricks: how to cleanse/merge it)
+#
+# Adding a new source table = one row in ctl.ingestion_control + one block
+# here. No new pipeline and no new notebook. That is the "developer standard"
+# every engineer follows.
+#
+# Keys per entity:
+#   load_pattern     SQLSERVER_CDC | ORACLE_WATERMARK | ORACLE_FULL | REST_API | ADLS_FILE
+#   raw_path         folder under storage.raw_root that ADF writes parquet into
+#   primary_keys     business key(s) of the silver table
+#   sequence_by      ordering columns: latest version per key wins (dedup + out-of-order safety)
+#   delete_condition SQL predicate identifying a delete event (CDC only)
+#   columns          source_column -> {name, type, transforms}
+#                    transforms: trim | upper | lower | initcap | empty_to_null
+#   null_defaults    null handling after standardization
+#   dq_rules         severity ERROR => row quarantined; WARN => row kept, flagged, counted
+# =============================================================================
+
+entities:
+
+  # ---------------------------------------------------------------- SQL Server MES (native CDC)
+  mes_machine:
+    source_system: SQLSERVER_MES
+    load_pattern: SQLSERVER_CDC
+    raw_path: sqlserver_mes/machine
+    silver_table: mes_machine
+    primary_keys: [machine_id]
+    sequence_by: [cdc_start_lsn, cdc_seqval]
+    delete_condition: "cdc_operation = 1"
+    columns:
+      machine_id: {name: machine_id, type: string, transforms: [trim, upper]}
+      machine_name: {name: machine_name, type: string, transforms: [trim, empty_to_null]}
+      plant_id: {name: plant_id, type: string, transforms: [trim, upper]}
+      line_id: {name: line_id, type: string, transforms: [trim, upper]}
+      machine_type: {name: machine_type, type: string, transforms: [trim, upper]}
+      manufacturer: {name: manufacturer, type: string, transforms: [trim, initcap]}
+      install_date: {name: install_date, type: date}
+      status: {name: status, type: string, transforms: [trim, upper]}
+      rated_units_per_hour: {name: rated_units_per_hour, type: int}
+      modified_at: {name: source_modified_at, type: timestamp}
+    null_defaults: {machine_type: UNKNOWN, status: UNKNOWN}
+    dq_rules:
+      - {name: machine_id_not_null, expr: "machine_id IS NOT NULL", severity: ERROR}
+      - {name: plant_id_not_null, expr: "plant_id IS NOT NULL", severity: ERROR}
+      - {name: rated_capacity_positive, expr: "rated_units_per_hour IS NULL OR rated_units_per_hour > 0", severity: ERROR}
+      - {name: status_in_domain, expr: "status IN ('ACTIVE','IDLE','MAINTENANCE','RETIRED','UNKNOWN')", severity: WARN}
+
+  mes_production_log:
+    source_system: SQLSERVER_MES
+    load_pattern: SQLSERVER_CDC
+    raw_path: sqlserver_mes/production_log
+    silver_table: mes_production_log
+    primary_keys: [production_log_id]
+    sequence_by: [cdc_start_lsn, cdc_seqval]
+    delete_condition: "cdc_operation = 1"
+    columns:
+      production_log_id: {name: production_log_id, type: bigint}
+      order_id: {name: order_id, type: string, transforms: [trim, upper]}
+      machine_id: {name: machine_id, type: string, transforms: [trim, upper]}
+      product_id: {name: product_id, type: string, transforms: [trim, upper]}
+      shift_code: {name: shift_code, type: string, transforms: [trim, upper]}
+      start_ts: {name: start_ts, type: timestamp}
+      end_ts: {name: end_ts, type: timestamp}
+      units_produced: {name: units_produced, type: int}
+      units_scrapped: {name: units_scrapped, type: int}
+      operator_id: {name: operator_id, type: string, transforms: [trim, upper]}
+      modified_at: {name: source_modified_at, type: timestamp}
+    null_defaults: {units_scrapped: 0, shift_code: UNKNOWN}
+    dq_rules:
+      - {name: key_not_null, expr: "production_log_id IS NOT NULL", severity: ERROR}
+      - {name: machine_not_null, expr: "machine_id IS NOT NULL AND product_id IS NOT NULL", severity: ERROR}
+      - {name: non_negative_units, expr: "units_produced >= 0 AND units_scrapped >= 0", severity: ERROR}
+      - {name: scrap_not_above_produced, expr: "units_scrapped <= units_produced", severity: ERROR}
+      - {name: end_after_start, expr: "end_ts IS NULL OR end_ts >= start_ts", severity: ERROR}
+      - {name: shift_in_domain, expr: "shift_code IN ('A','B','C','UNKNOWN')", severity: WARN}
+
+  mes_quality_inspection:
+    source_system: SQLSERVER_MES
+    load_pattern: SQLSERVER_CDC
+    raw_path: sqlserver_mes/quality_inspection
+    silver_table: mes_quality_inspection
+    primary_keys: [inspection_id]
+    sequence_by: [cdc_start_lsn, cdc_seqval]
+    delete_condition: "cdc_operation = 1"
+    columns:
+      inspection_id: {name: inspection_id, type: bigint}
+      production_log_id: {name: production_log_id, type: bigint}
+      machine_id: {name: machine_id, type: string, transforms: [trim, upper]}
+      product_id: {name: product_id, type: string, transforms: [trim, upper]}
+      inspection_ts: {name: inspection_ts, type: timestamp}
+      sample_size: {name: sample_size, type: int}
+      defect_count: {name: defect_count, type: int}
+      defect_code: {name: defect_code, type: string, transforms: [trim, upper, empty_to_null]}
+      inspection_result: {name: inspection_result, type: string, transforms: [trim, upper]}
+      inspector_id: {name: inspector_id, type: string, transforms: [trim, upper]}
+      modified_at: {name: source_modified_at, type: timestamp}
+    null_defaults: {defect_code: NONE, defect_count: 0}
+    dq_rules:
+      - {name: key_not_null, expr: "inspection_id IS NOT NULL", severity: ERROR}
+      - {name: sample_positive, expr: "sample_size > 0", severity: ERROR}
+      - {name: defects_within_sample, expr: "defect_count BETWEEN 0 AND sample_size", severity: ERROR}
+      - {name: result_in_domain, expr: "inspection_result IN ('PASS','FAIL')", severity: ERROR}
+
+  # ---------------------------------------------------------------- Oracle ERP (query-based incremental)
+  erp_product:
+    source_system: ORACLE_ERP
+    load_pattern: ORACLE_WATERMARK
+    raw_path: oracle_erp/product
+    silver_table: erp_product
+    primary_keys: [product_id]
+    sequence_by: [last_update_date]
+    columns:
+      PRODUCT_ID: {name: product_id, type: string, transforms: [trim, upper]}
+      SKU: {name: sku, type: string, transforms: [trim, upper]}
+      PRODUCT_NAME: {name: product_name, type: string, transforms: [trim, empty_to_null]}
+      PRODUCT_FAMILY: {name: product_family, type: string, transforms: [trim, upper]}
+      UNIT_COST: {name: unit_cost, type: "decimal(12,2)"}
+      STD_CYCLE_TIME_SEC: {name: std_cycle_time_sec, type: int}
+      LAST_UPDATE_DATE: {name: last_update_date, type: timestamp}
+    null_defaults: {product_family: UNCLASSIFIED}
+    dq_rules:
+      - {name: product_id_not_null, expr: "product_id IS NOT NULL", severity: ERROR}
+      - {name: cycle_time_positive, expr: "std_cycle_time_sec > 0", severity: ERROR}
+      - {name: cost_non_negative, expr: "unit_cost IS NULL OR unit_cost >= 0", severity: ERROR}
+      - {name: name_present, expr: "product_name IS NOT NULL", severity: WARN}
+
+  erp_plant:
+    source_system: ORACLE_ERP
+    load_pattern: ORACLE_FULL
+    raw_path: oracle_erp/plant
+    silver_table: erp_plant
+    primary_keys: [plant_id]
+    sequence_by: [last_update_date]
+    columns:
+      PLANT_ID: {name: plant_id, type: string, transforms: [trim, upper]}
+      PLANT_NAME: {name: plant_name, type: string, transforms: [trim]}
+      CITY: {name: city, type: string, transforms: [trim, initcap]}
+      COUNTRY_CODE: {name: country_code, type: string, transforms: [trim, upper]}
+      TIMEZONE: {name: timezone, type: string, transforms: [trim]}
+      LAST_UPDATE_DATE: {name: last_update_date, type: timestamp}
+    null_defaults: {}
+    dq_rules:
+      - {name: plant_id_not_null, expr: "plant_id IS NOT NULL", severity: ERROR}
+      - {name: country_iso2, expr: "length(country_code) = 2", severity: WARN}
+
+  erp_production_order:
+    source_system: ORACLE_ERP
+    load_pattern: ORACLE_WATERMARK
+    raw_path: oracle_erp/production_order
+    silver_table: erp_production_order
+    primary_keys: [order_id]
+    sequence_by: [last_update_date]
+    columns:
+      ORDER_ID: {name: order_id, type: string, transforms: [trim, upper]}
+      PRODUCT_ID: {name: product_id, type: string, transforms: [trim, upper]}
+      PLANT_ID: {name: plant_id, type: string, transforms: [trim, upper]}
+      PLANNED_QTY: {name: planned_qty, type: int}
+      PLANNED_START: {name: planned_start, type: timestamp}
+      PLANNED_END: {name: planned_end, type: timestamp}
+      ORDER_STATUS: {name: order_status, type: string, transforms: [trim, upper]}
+      LAST_UPDATE_DATE: {name: last_update_date, type: timestamp}
+    null_defaults: {order_status: UNKNOWN}
+    dq_rules:
+      - {name: order_id_not_null, expr: "order_id IS NOT NULL", severity: ERROR}
+      - {name: planned_qty_positive, expr: "planned_qty > 0", severity: ERROR}
+      - {name: planned_window_valid, expr: "planned_end >= planned_start", severity: WARN}
+
+  # ---------------------------------------------------------------- CMMS REST API (maintenance)
+  cmms_work_order:
+    source_system: CMMS_API
+    load_pattern: REST_API
+    raw_path: cmms_api/work_order
+    silver_table: cmms_work_order
+    primary_keys: [work_order_id]
+    sequence_by: [updated_at]
+    columns:
+      work_order_id: {name: work_order_id, type: string, transforms: [trim, upper]}
+      machine_id: {name: machine_id, type: string, transforms: [trim, upper]}
+      work_type: {name: work_type, type: string, transforms: [trim, upper]}
+      priority: {name: priority, type: string, transforms: [trim, upper]}
+      status: {name: status, type: string, transforms: [trim, upper]}
+      reported_at: {name: reported_at, type: timestamp}
+      started_at: {name: started_at, type: timestamp}
+      completed_at: {name: completed_at, type: timestamp}
+      downtime_minutes: {name: downtime_minutes, type: int}
+      technician: {name: technician, type: string, transforms: [trim, initcap]}
+      updated_at: {name: updated_at, type: timestamp}
+    null_defaults: {downtime_minutes: 0, priority: P3}
+    dq_rules:
+      - {name: wo_id_not_null, expr: "work_order_id IS NOT NULL AND machine_id IS NOT NULL", severity: ERROR}
+      - {name: downtime_non_negative, expr: "downtime_minutes >= 0", severity: ERROR}
+      - {name: type_in_domain, expr: "work_type IN ('PREVENTIVE','CORRECTIVE','BREAKDOWN')", severity: ERROR}
+      - {name: completed_after_reported, expr: "completed_at IS NULL OR completed_at >= reported_at", severity: WARN}
+
+  # ---------------------------------------------------------------- Supplier files dropped on ADLS
+  supplier_delivery:
+    source_system: SUPPLIER_FILES
+    load_pattern: ADLS_FILE
+    raw_path: supplier_files/delivery
+    silver_table: supplier_delivery
+    primary_keys: [delivery_id]
+    sequence_by: [_ingest_ts]
+    columns:
+      delivery_id: {name: delivery_id, type: string, transforms: [trim, upper]}
+      supplier_id: {name: supplier_id, type: string, transforms: [trim, upper]}
+      supplier_name: {name: supplier_name, type: string, transforms: [trim, initcap]}
+      material_code: {name: material_code, type: string, transforms: [trim, upper]}
+      plant_id: {name: plant_id, type: string, transforms: [trim, upper]}
+      delivery_date: {name: delivery_date, type: date}
+      delivered_qty: {name: delivered_qty, type: int}
+      rejected_qty: {name: rejected_qty, type: int}
+      lot_number: {name: lot_number, type: string, transforms: [trim, upper]}
+    null_defaults: {rejected_qty: 0}
+    dq_rules:
+      - {name: delivery_id_not_null, expr: "delivery_id IS NOT NULL", severity: ERROR}
+      - {name: qty_valid, expr: "delivered_qty > 0 AND rejected_qty BETWEEN 0 AND delivered_qty", severity: ERROR}
+      - {name: date_not_future, expr: "delivery_date <= current_date()", severity: WARN}
+
+# IoT telemetry is NOT in this registry: it does not come through ADF. It is a
+# continuous stream Event Hub -> Structured Streaming. See src/streaming/.

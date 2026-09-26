@@ -1,0 +1,39 @@
+{
+    "name": "adf-nf-mfg-dev",
+    "properties": {
+        "globalParameters": {
+            "gp_environment": {
+                "type": "String",
+                "value": "dev"
+            },
+            "gp_keyvault_url": {
+                "type": "String",
+                "value": "https://kv-nf-mfg-dev.vault.azure.net"
+            },
+            "gp_cmms_base_url": {
+                "type": "String",
+                "value": "https://cmms.example.com/api/v1/"
+            },
+            "gp_cmms_token_url": {
+                "type": "String",
+                "value": "https://login.cmms.example.com/oauth2/token"
+            },
+            "gp_cmms_client_id": {
+                "type": "String",
+                "value": "adf-nf-mfg-dev"
+            },
+            "gp_databricks_workspace_url": {
+                "type": "String",
+                "value": "https://adb-REPLACE.azuredatabricks.net"
+            },
+            "gp_databricks_job_id": {
+                "type": "String",
+                "value": "REPLACE_WITH_JOB_ID"
+            }
+        }
+    },
+    "location": "westeurope",
+    "identity": {
+        "type": "SystemAssigned"
+    }
+}

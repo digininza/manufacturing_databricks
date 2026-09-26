@@ -1,0 +1,104 @@
+####################################################################################
+# Batch pipeline — triggered by ADF (PL_30_Run_Databricks_Job) after ingestion,
+# or by the file-arrival trigger below as a fallback.
+#
+#   bronze ─► silver ─► gold dims ─► gold facts ─► snowflake publish ─► recon report ─► power bi refresh
+#
+# Each arrow is a hard dependency: a failed reconciliation anywhere stops everything
+# downstream, so consumers never see partially processed data.
+####################################################################################
+
+resources:
+  jobs:
+    mfg_batch_pipeline:
+      name: "[${var.environment}] mfg_batch_pipeline"
+      max_concurrent_runs: 1            # two overlapping runs would race on MERGE + watermarks
+      timeout_seconds: 14400
+      tags: {project: northforge-mfg, layer: batch}
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+        on_duration_warning_threshold_exceeded: ["${var.notification_email}"]
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 5400                  # SLA warning at 90 min
+      parameters:
+        - {name: environment, default: "${var.environment}"}
+        - {name: run_date, default: ""}
+        - {name: batch_group, default: DAILY}
+        - {name: adf_run_id, default: manual}
+      trigger:
+        pause_status: PAUSED             # ADF is the primary orchestrator; unpause for event-driven fallback
+        file_arrival:
+          url: abfss://raw@stnfmfg${var.environment}.dfs.core.windows.net/_manifests/
+          min_time_between_triggers_seconds: 900
+
+      job_clusters:
+        - job_cluster_key: batch
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            autoscale: {min_workers: 1, max_workers: 6}
+            data_security_mode: SINGLE_USER
+            runtime_engine: PHOTON
+            spark_conf:
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+              spark.databricks.delta.autoCompact.enabled: "auto"
+
+      tasks:
+        - task_key: bronze_autoloader
+          job_cluster_key: batch
+          max_retries: 2                  # transient storage / cluster errors
+          min_retry_interval_millis: 120000
+          notebook_task:
+            notebook_path: ../../notebooks/01_bronze/run_autoloader_bronze.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: silver
+          depends_on: [{task_key: bronze_autoloader}]
+          job_cluster_key: batch
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../../notebooks/03_silver/run_silver.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: gold_dimensions
+          depends_on: [{task_key: silver}]
+          job_cluster_key: batch
+          notebook_task:
+            notebook_path: ../../notebooks/04_gold/build_dimensions.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: gold_facts
+          depends_on: [{task_key: gold_dimensions}]
+          job_cluster_key: batch
+          notebook_task:
+            notebook_path: ../../notebooks/04_gold/build_facts.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: publish_snowflake
+          depends_on: [{task_key: gold_facts}]
+          job_cluster_key: batch
+          max_retries: 2                  # Snowflake network blips; MERGE + watermark make retries safe
+          min_retry_interval_millis: 300000
+          notebook_task:
+            notebook_path: ../../notebooks/06_publish/publish_to_snowflake.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: reconciliation_report
+          depends_on: [{task_key: publish_snowflake}]
+          job_cluster_key: batch
+          notebook_task:
+            notebook_path: ../../notebooks/05_reconciliation/reconciliation_report.py
+            base_parameters: {job_run_id: "{{job.run_id}}"}
+
+        - task_key: refresh_powerbi
+          depends_on: [{task_key: reconciliation_report}]
+          job_cluster_key: batch
+          notebook_task:
+            notebook_path: ../../notebooks/06_publish/refresh_powerbi.py
+            base_parameters:
+              job_run_id: "{{job.run_id}}"
+              powerbi_workspace_id: ${var.powerbi_workspace_id}
+              powerbi_dataset_id: ${var.powerbi_dataset_id}

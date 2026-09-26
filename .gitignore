@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local Spark/Delta artifacts
+metastore_db/
+spark-warehouse/
+derby.log
+
+# Bulk generated data (the small committed samples in sample_data/ ARE tracked)
+generated_data/
+
+# Databricks bundle local state
+.databricks/
+.bundle/
+
+# Power BI local-only files
+powerbi/**/.pbi/localSettings.json
+powerbi/**/.pbi/cache.abf
+
+# Local agent/tooling state
+.claude/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

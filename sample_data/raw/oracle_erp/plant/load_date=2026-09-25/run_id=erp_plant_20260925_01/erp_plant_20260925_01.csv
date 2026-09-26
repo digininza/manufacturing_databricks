@@ -1,0 +1,4 @@
+PLANT_ID,PLANT_NAME,CITY,COUNTRY_CODE,TIMEZONE,LAST_UPDATE_DATE
+P01,NorthForge Pune Assembly,pune,IN,Asia/Kolkata,2026-06-26 00:00:00
+P02,NorthForge Monterrey Stamping & Welding,monterrey,MX,America/Monterrey,2026-09-25 00:00:00
+P03,NorthForge Brno Machining,brno,CZ,Europe/Prague,2026-06-26 00:00:00

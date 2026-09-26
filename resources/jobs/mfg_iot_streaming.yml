@@ -1,0 +1,40 @@
+####################################################################################
+# IoT streaming — CONTINUOUS job: Event Hub -> bronze -> silver (readings + 1-min aggregates).
+# Continuous mode restarts failed runs automatically (exponential back-off);
+# checkpoints make every restart resume exactly where it stopped.
+####################################################################################
+
+resources:
+  jobs:
+    mfg_iot_streaming:
+      name: "[${var.environment}] mfg_iot_streaming"
+      tags: {project: northforge-mfg, layer: streaming}
+      continuous:
+        pause_status: PAUSED            # unpause after the Event Hub secret is in Key Vault
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+      health:
+        rules:
+          - metric: STREAMING_BACKLOG_SECONDS   # consumer lag alert
+            op: GREATER_THAN
+            value: 600
+      parameters:
+        - {name: environment, default: "${var.environment}"}
+      job_clusters:
+        - job_cluster_key: stream
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              spark.sql.streaming.stateStore.providerClass: com.databricks.sql.streaming.state.RocksDBStateStoreProvider
+      tasks:
+        - task_key: eventhub_to_bronze
+          job_cluster_key: stream
+          notebook_task:
+            notebook_path: ../../notebooks/02_streaming/iot_eventhub_to_bronze.py
+        - task_key: bronze_to_silver
+          job_cluster_key: stream
+          notebook_task:
+            notebook_path: ../../notebooks/02_streaming/iot_bronze_to_silver.py

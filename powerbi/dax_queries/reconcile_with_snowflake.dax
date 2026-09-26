@@ -1,0 +1,36 @@
+// -----------------------------------------------------------------------------
+// BI RECONCILIATION — run in DAX Studio / DAX query view against the published model.
+// Compare the output with the Snowflake SQL in the comment. They must match exactly;
+// if they don't, the model (relationships, RLS, refresh window) is wrong, not the data.
+// -----------------------------------------------------------------------------
+
+// 1. Units produced and scrap by month and plant
+//    Snowflake: SELECT DATE_TRUNC('MONTH', PRODUCTION_DATE), p.PLANT_ID, SUM(UNITS_PRODUCED), SUM(UNITS_SCRAPPED)
+//               FROM GOLD.FACT_PRODUCTION_DAILY f JOIN GOLD.DIM_PLANT p ON p.PLANT_SK = f.PLANT_SK GROUP BY 1,2 ORDER BY 1,2;
+EVALUATE
+SUMMARIZECOLUMNS (
+    'Date'[year], 'Date'[month],
+    Plant[plant_id],
+    "Units Produced", [Units Produced],
+    "Units Scrapped", [Units Scrapped]
+)
+ORDER BY 'Date'[year], 'Date'[month], Plant[plant_id]
+
+// 2. OEE by plant and day. Must equal REPORTING.VW_PLANT_OEE_DAILY.OEE (same component-based formula).
+EVALUATE
+SUMMARIZECOLUMNS (
+    'Date'[calendar_date], Plant[plant_id],
+    "Availability", [Availability %],
+    "Performance", [Performance %],
+    "Quality", [Quality %],
+    "OEE", [OEE %]
+)
+
+// 3. Row counts per fact. Compare with SELECT COUNT(*) FROM GOLD.<FACT> (the incremental refresh window must not drop rows).
+EVALUATE
+{
+    ( "Fact Production Daily", COUNTROWS ( 'Fact Production Daily' ) ),
+    ( "Fact Machine Daily", COUNTROWS ( 'Fact Machine Daily' ) ),
+    ( "Fact Quality Inspection", COUNTROWS ( 'Fact Quality Inspection' ) ),
+    ( "Fact Maintenance Event", COUNTROWS ( 'Fact Maintenance Event' ) )
+}

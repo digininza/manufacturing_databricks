@@ -1,0 +1,37 @@
+{
+    "name": "TR_Hourly_MES_Tumbling",
+    "properties": {
+        "description": "Hourly MES CDC. Tumbling window: each window runs exactly once, retried automatically, and the self-dependency guarantees window N never starts before window N-1 succeeded (ordered CDC).",
+        "annotations": [],
+        "runtimeState": "Stopped",
+        "pipeline": {
+            "pipelineReference": {
+                "referenceName": "PL_00_Master_Orchestrator",
+                "type": "PipelineReference"
+            },
+            "parameters": {
+                "batch_group": "HOURLY",
+                "run_date": "@formatDateTime(trigger().outputs.windowStartTime, 'yyyy-MM-dd')"
+            }
+        },
+        "type": "TumblingWindowTrigger",
+        "typeProperties": {
+            "frequency": "Hour",
+            "interval": 1,
+            "startTime": "2026-09-01T00:00:00Z",
+            "delay": "00:05:00",
+            "maxConcurrency": 1,
+            "retryPolicy": {
+                "count": 2,
+                "intervalInSeconds": 300
+            },
+            "dependsOn": [
+                {
+                    "type": "SelfDependencyTumblingWindowTriggerReference",
+                    "offset": "-01:00:00",
+                    "size": "01:00:00"
+                }
+            ]
+        }
+    }
+}

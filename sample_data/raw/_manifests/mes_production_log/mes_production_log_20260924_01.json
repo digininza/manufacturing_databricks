@@ -1,0 +1,15 @@
+{
+  "run_id": "mes_production_log_20260924_01",
+  "entity_name": "mes_production_log",
+  "source_system": "SQLSERVER_MES",
+  "load_pattern": "SQLSERVER_CDC",
+  "load_date": "2026-09-24",
+  "window_start": "",
+  "window_end": "0x0000002A000001F81402",
+  "source_count": 37,
+  "rows_read": 37,
+  "rows_copied": 37,
+  "rows_skipped": 0,
+  "status": "VALIDATED",
+  "adf_pipeline_run_id": "adf-mes_production_log_20260924_01"
+}

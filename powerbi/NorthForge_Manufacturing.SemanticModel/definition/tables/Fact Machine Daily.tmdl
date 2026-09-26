@@ -1,0 +1,114 @@
+/// GRAIN: production_date x machine. OEE components are summed and OEE re-derived in DAX (never average OEE %).
+table 'Fact Machine Daily'
+
+	column date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DATE_KEY
+
+	column plant_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PLANT_SK
+
+	column machine_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MACHINE_SK
+
+	column planned_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PLANNED_MINUTES
+
+	column run_minutes
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: RUN_MINUTES
+
+	column downtime_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DOWNTIME_MINUTES
+
+	column available_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: AVAILABLE_MINUTES
+
+	column breakdowns
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: BREAKDOWNS
+
+	column ideal_units
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: IDEAL_UNITS
+
+	column units_produced
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: UNITS_PRODUCED
+
+	column units_good
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: UNITS_GOOD
+
+	column anomaly_minutes
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: ANOMALY_MINUTES
+
+	column avg_temperature_c
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: AVG_TEMPERATURE_C
+
+	column max_vibration_mm_s
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: MAX_VIBRATION_MM_S
+
+	partition 'Fact Machine Daily' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_MACHINE_DAILY", Kind = "Table"]}[Data],
+				    Filtered = Table.SelectRows(Obj, each [PRODUCTION_DATE] >= Date.From(RangeStart) and [PRODUCTION_DATE] < Date.From(RangeEnd))  // folds to Snowflake WHERE
+				in
+				    Filtered
+
+	refreshPolicy
+		policyType: basic
+		rollingWindowGranularity: year
+		rollingWindowPeriods: 3
+		incrementalGranularity: day
+		incrementalPeriods: 10
+		sourceExpression =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_MACHINE_DAILY", Kind = "Table"]}[Data],
+				    Filtered = Table.SelectRows(Obj, each [PRODUCTION_DATE] >= Date.From(RangeStart) and [PRODUCTION_DATE] < Date.From(RangeEnd))  // folds to Snowflake WHERE
+				in
+				    Filtered

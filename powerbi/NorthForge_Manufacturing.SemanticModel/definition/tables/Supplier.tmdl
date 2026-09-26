@@ -1,0 +1,28 @@
+table 'Supplier'
+
+	column supplier_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: SUPPLIER_SK
+
+	column supplier_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: SUPPLIER_ID
+
+	column supplier_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: SUPPLIER_NAME
+
+	partition 'Supplier' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_SUPPLIER", Kind = "Table"]}[Data]
+				in
+				    Obj

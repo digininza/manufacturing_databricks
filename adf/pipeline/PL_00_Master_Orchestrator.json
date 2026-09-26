@@ -1,0 +1,367 @@
+{
+    "name": "PL_00_Master_Orchestrator",
+    "properties": {
+        "description": "Metadata-driven master. Reads ctl.ingestion_control for the batch group, skips entities already successful for run_date (rerun-from-failure), fans out in parallel, closes the batch, triggers Databricks, alerts on any failure.",
+        "activities": [
+            {
+                "name": "Set_Run_Date",
+                "type": "SetVariable",
+                "dependsOn": [],
+                "userProperties": [],
+                "typeProperties": {
+                    "variableName": "v_run_date",
+                    "value": {
+                        "value": "@if(empty(pipeline().parameters.run_date), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.run_date)",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Start_Batch",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "Set_Run_Date",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 2,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "[ctl].[usp_start_batch]",
+                        "storedProcedureParameters": {
+                            "batch_group": {
+                                "type": "String",
+                                "value": {
+                                    "value": "@pipeline().parameters.batch_group",
+                                    "type": "Expression"
+                                }
+                            },
+                            "run_date": {
+                                "type": "DateTime",
+                                "value": {
+                                    "value": "@variables('v_run_date')",
+                                    "type": "Expression"
+                                }
+                            },
+                            "adf_pipeline_run_id": {
+                                "type": "String",
+                                "value": {
+                                    "value": "@pipeline().RunId",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "DS_ControlDB",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "Get_Pending_Entities",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "Start_Batch",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 2,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "[ctl].[usp_get_pending_entities]",
+                        "storedProcedureParameters": {
+                            "batch_group": {
+                                "type": "String",
+                                "value": {
+                                    "value": "@pipeline().parameters.batch_group",
+                                    "type": "Expression"
+                                }
+                            },
+                            "run_date": {
+                                "type": "DateTime",
+                                "value": {
+                                    "value": "@variables('v_run_date')",
+                                    "type": "Expression"
+                                }
+                            },
+                            "force_rerun": {
+                                "type": "Boolean",
+                                "value": {
+                                    "value": "@pipeline().parameters.force_rerun",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "DS_ControlDB",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "ForEach_Entity",
+                "description": "Parallel (4 at a time). One entity failing does NOT stop the others; ForEach reports Failed at the end if any failed.",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Get_Pending_Entities",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get_Pending_Entities').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 4,
+                    "activities": [
+                        {
+                            "name": "Ingest_Entity",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "PL_01_Ingest_Entity_Router",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "entity": {
+                                        "value": "@item()",
+                                        "type": "Expression"
+                                    },
+                                    "batch_run_id": {
+                                        "value": "@string(activity('Start_Batch').output.firstRow.batch_run_id)",
+                                        "type": "Expression"
+                                    },
+                                    "run_date": {
+                                        "value": "@variables('v_run_date')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Complete_Batch",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "ForEach_Entity",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 2,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "[ctl].[usp_complete_batch]",
+                        "storedProcedureParameters": {
+                            "batch_run_id": {
+                                "type": "Int64",
+                                "value": {
+                                    "value": "@activity('Start_Batch').output.firstRow.batch_run_id",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "DS_ControlDB",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "If_Trigger_Databricks",
+                "description": "Trigger Databricks even on PARTIAL failure: healthy entities flow on; failed ones are simply absent (no manifest) and are picked up after the rerun.",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Complete_Batch",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@and(pipeline().parameters.trigger_databricks, greater(int(activity('Complete_Batch').output.firstRow.entities_succeeded), 0))",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Run_Databricks_Job",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "PL_30_Run_Databricks_Job",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "batch_group": {
+                                        "value": "@pipeline().parameters.batch_group",
+                                        "type": "Expression"
+                                    },
+                                    "run_date": {
+                                        "value": "@variables('v_run_date')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "If_Batch_Had_Failures",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Complete_Batch",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@not(equals(activity('Complete_Batch').output.firstRow.status, 'SUCCESS'))",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Batch_Failure_Alert",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "PL_90_Send_Alert",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "severity": "HIGH",
+                                    "pipeline_name": {
+                                        "value": "@pipeline().Pipeline",
+                                        "type": "Expression"
+                                    },
+                                    "entity_name": "BATCH",
+                                    "message": {
+                                        "value": "@concat('Batch ', pipeline().parameters.batch_group, ' ', variables('v_run_date'), ' finished with status ', activity('Complete_Batch').output.firstRow.status, ': ', string(activity('Complete_Batch').output.firstRow.entities_failed), ' entity(ies) failed. Rerun PL_00 - completed entities are skipped automatically.')",
+                                        "type": "Expression"
+                                    },
+                                    "adf_run_id": {
+                                        "value": "@pipeline().RunId",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Fail_Master",
+                            "type": "Fail",
+                            "dependsOn": [
+                                {
+                                    "activity": "Batch_Failure_Alert",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                }
+                            ],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "message": {
+                                    "value": "@concat('Batch finished with status ', activity('Complete_Batch').output.firstRow.status)",
+                                    "type": "Expression"
+                                },
+                                "errorCode": "BATCH_PARTIAL_FAILURE"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "parameters": {
+            "batch_group": {
+                "type": "string",
+                "defaultValue": "DAILY"
+            },
+            "run_date": {
+                "type": "string",
+                "defaultValue": ""
+            },
+            "force_rerun": {
+                "type": "bool",
+                "defaultValue": false
+            },
+            "trigger_databricks": {
+                "type": "bool",
+                "defaultValue": true
+            }
+        },
+        "variables": {
+            "v_run_date": {
+                "type": "String"
+            }
+        },
+        "folder": {
+            "name": "00_Orchestration"
+        },
+        "annotations": [
+            "orchestration"
+        ]
+    }
+}

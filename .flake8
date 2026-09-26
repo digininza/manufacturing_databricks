@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 160
+extend-ignore = E203,W503,E402,E127
+exclude = .venv,.git,__pycache__,metastore_db,spark-warehouse
+# Databricks notebooks get spark/config/dbutils/display/... from `%run ../_common/bootstrap`
+per-file-ignores =
+    notebooks/*: F821,F401,E501
+    # ADF expressions / DAX are long single strings; splitting them hurts readability
+    tools/*: E501

@@ -1,0 +1,17 @@
+# Local test config: empty catalog => Config.fq() emits 2-part schema.table
+# names so the same code runs against local Spark's spark_catalog.
+environment: local_test
+unity_catalog:
+  catalog: ""
+  schemas: {control: control, bronze: bronze, silver: silver, quarantine: quarantine, gold: gold}
+storage:
+  raw_root: /tmp/northforge_local/raw
+  manifest_root: /tmp/northforge_local/raw/_manifests
+  checkpoint_root: /tmp/northforge_local/checkpoints
+  schema_root: /tmp/northforge_local/checkpoints/_schemas
+eventhub: {namespace: local, hub_name: local, consumer_group: local, secret_scope: local, secret_key: local, max_events_per_trigger: 1000, starting_offsets: earliest}
+streaming: {late_data_watermark: "10 minutes", aggregation_window: "1 minute", bronze_trigger_seconds: 5, silver_trigger_seconds: 5}
+snowflake: {url: local, user: local, role: local, warehouse: local, database: local, schema: GOLD, stage_schema: STAGE, secret_scope: local, private_key_secret: local}
+reconciliation: {count_tolerance: 0, amount_tolerance_pct: 0.0001}
+alerting: {secret_scope: local, webhook_secret_key: local, distribution_list: local@example.com}
+gold: {planned_minutes_per_shift: 480, shifts_per_day: 3, unknown_member_sk: -1}

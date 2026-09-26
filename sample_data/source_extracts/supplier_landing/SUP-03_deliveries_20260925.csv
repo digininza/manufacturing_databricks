@@ -1,0 +1,2 @@
+delivery_id,supplier_id,supplier_name,material_code,plant_id,delivery_date,delivered_qty,rejected_qty,lot_number
+DLV-20260925-003,SUP-03,polymer works sa,stl-1018-coil,p02,2026-09-25,1966,58,lot-25340

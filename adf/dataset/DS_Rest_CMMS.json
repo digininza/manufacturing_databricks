@@ -1,0 +1,21 @@
+{
+    "name": "DS_Rest_CMMS",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "LS_Rest_CMMS",
+            "type": "LinkedServiceReference"
+        },
+        "parameters": {
+            "relative_url": {
+                "type": "string"
+            }
+        },
+        "type": "RestResource",
+        "typeProperties": {
+            "relativeUrl": {
+                "value": "@dataset().relative_url",
+                "type": "Expression"
+            }
+        }
+    }
+}

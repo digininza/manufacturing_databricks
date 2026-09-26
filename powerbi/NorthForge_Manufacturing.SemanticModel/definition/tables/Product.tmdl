@@ -1,0 +1,65 @@
+/// SCD2: unit_cost / std_cycle_time as of the production day -> historic scrap cost and performance are not restated.
+table 'Product'
+
+	column product_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PRODUCT_SK
+
+	column product_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PRODUCT_ID
+
+	column sku
+		dataType: string
+		summarizeBy: none
+		sourceColumn: SKU
+
+	column product_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PRODUCT_NAME
+
+	column product_family
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PRODUCT_FAMILY
+
+	column unit_cost
+		dataType: decimal
+		formatString: "$"#,0.00
+		summarizeBy: none
+		sourceColumn: UNIT_COST
+
+	column std_cycle_time_sec
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: STD_CYCLE_TIME_SEC
+
+	column effective_from
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: EFFECTIVE_FROM
+
+	column effective_to
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: EFFECTIVE_TO
+
+	column is_current
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: IS_CURRENT
+
+	partition 'Product' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_PRODUCT", Kind = "Table"]}[Data]
+				in
+				    Obj

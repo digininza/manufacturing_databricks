@@ -1,0 +1,254 @@
+{
+    "name": "PL_30_Run_Databricks_Job",
+    "properties": {
+        "description": "Starts the Databricks batch job (Jobs API 2.1, ADF managed identity added to the workspace as a service principal) and polls until it terminates. Alerts + fails if the job did not succeed.",
+        "activities": [
+            {
+                "name": "Run_Now",
+                "type": "WebActivity",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:05:00",
+                    "retry": 3,
+                    "retryIntervalInSeconds": 120,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": {
+                        "value": "@concat(pipeline().globalParameters.gp_databricks_workspace_url, '/api/2.1/jobs/run-now')",
+                        "type": "Expression"
+                    },
+                    "authentication": {
+                        "type": "MSI",
+                        "resource": "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
+                    },
+                    "body": {
+                        "value": "@json(concat('{\"job_id\": ', pipeline().globalParameters.gp_databricks_job_id, ', \"job_parameters\": {\"run_date\": \"', pipeline().parameters.run_date, '\", \"batch_group\": \"', pipeline().parameters.batch_group, '\", \"adf_run_id\": \"', pipeline().RunId, '\"}}'))",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Set_Run_Id",
+                "type": "SetVariable",
+                "dependsOn": [
+                    {
+                        "activity": "Run_Now",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "variableName": "v_dbx_run_id",
+                    "value": {
+                        "value": "@string(activity('Run_Now').output.run_id)",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Until_Job_Terminated",
+                "type": "Until",
+                "dependsOn": [
+                    {
+                        "activity": "Set_Run_Id",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@contains(createArray('TERMINATED', 'SKIPPED', 'INTERNAL_ERROR'), variables('v_life_cycle'))",
+                        "type": "Expression"
+                    },
+                    "activities": [
+                        {
+                            "name": "Wait_60s",
+                            "type": "Wait",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "waitTimeInSeconds": 60
+                            }
+                        },
+                        {
+                            "name": "Get_Run_State",
+                            "type": "WebActivity",
+                            "dependsOn": [
+                                {
+                                    "activity": "Wait_60s",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:05:00",
+                                "retry": 3,
+                                "retryIntervalInSeconds": 120,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "method": "GET",
+                                "url": {
+                                    "value": "@concat(pipeline().globalParameters.gp_databricks_workspace_url, '/api/2.1/jobs/runs/get?run_id=', variables('v_dbx_run_id'))",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set_Life_Cycle",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_Run_State",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "v_life_cycle",
+                                "value": {
+                                    "value": "@activity('Get_Run_State').output.state.life_cycle_state",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set_Result_State",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set_Life_Cycle",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "v_result_state",
+                                "value": {
+                                    "value": "@coalesce(activity('Get_Run_State').output.state?.result_state, '')",
+                                    "type": "Expression"
+                                }
+                            }
+                        }
+                    ],
+                    "timeout": "0.06:00:00"
+                }
+            },
+            {
+                "name": "If_Job_Not_Successful",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Until_Job_Terminated",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@not(equals(variables('v_result_state'), 'SUCCESS'))",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Alert_Databricks_Failed",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "PL_90_Send_Alert",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "severity": "CRITICAL",
+                                    "pipeline_name": {
+                                        "value": "@pipeline().Pipeline",
+                                        "type": "Expression"
+                                    },
+                                    "entity_name": "DATABRICKS_JOB",
+                                    "message": {
+                                        "value": "@concat('Databricks run ', variables('v_dbx_run_id'), ' ended ', variables('v_life_cycle'), '/', variables('v_result_state'))",
+                                        "type": "Expression"
+                                    },
+                                    "adf_run_id": {
+                                        "value": "@pipeline().RunId",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Fail_Databricks",
+                            "type": "Fail",
+                            "dependsOn": [
+                                {
+                                    "activity": "Alert_Databricks_Failed",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                }
+                            ],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "message": {
+                                    "value": "@concat('Databricks job result: ', variables('v_result_state'))",
+                                    "type": "Expression"
+                                },
+                                "errorCode": "DATABRICKS_JOB_FAILED"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "parameters": {
+            "batch_group": {
+                "type": "string"
+            },
+            "run_date": {
+                "type": "string"
+            }
+        },
+        "variables": {
+            "v_dbx_run_id": {
+                "type": "String"
+            },
+            "v_life_cycle": {
+                "type": "String",
+                "defaultValue": "PENDING"
+            },
+            "v_result_state": {
+                "type": "String"
+            }
+        },
+        "folder": {
+            "name": "20_Processing"
+        },
+        "annotations": [
+            "databricks"
+        ]
+    }
+}

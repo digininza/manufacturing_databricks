@@ -1,0 +1,53 @@
+/// DirectQuery on the governed SQL KPI view: identical numbers to Finance's Snowflake SQL; <100 rows/year so DQ is instant.
+table 'Exec KPI Monthly'
+
+	column month_start
+		dataType: dateTime
+		formatString: mmm yyyy
+		summarizeBy: none
+		sourceColumn: MONTH_START
+
+	column plant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_ID
+
+	column units_produced
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: UNITS_PRODUCED
+
+	column scrap_rate
+		dataType: double
+		formatString: 0.00%
+		summarizeBy: none
+		sourceColumn: SCRAP_RATE
+
+	column first_pass_yield
+		dataType: double
+		formatString: 0.00%
+		summarizeBy: none
+		sourceColumn: FIRST_PASS_YIELD
+
+	column availability
+		dataType: double
+		formatString: 0.0%
+		summarizeBy: none
+		sourceColumn: AVAILABILITY
+
+	column scrap_cost
+		dataType: decimal
+		formatString: "$"#,0
+		summarizeBy: sum
+		sourceColumn: SCRAP_COST
+
+	partition 'Exec KPI Monthly' = m
+		mode: directQuery
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "REPORTING", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "VW_EXEC_KPI_MONTHLY", Kind = "View"]}[Data]
+				in
+				    Obj

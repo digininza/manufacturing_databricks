@@ -1,0 +1,3 @@
+delivery_id,supplier_id,supplier_name,material_code,plant_id,delivery_date,delivered_qty,rejected_qty,lot_number
+DLV-20260924-001,SUP-01,acme metals ltd,pa66-gf30-resin,p01,2026-09-24,496,0,lot-37852
+DLV-20260924-004,SUP-01,acme metals ltd,cu-c110-sheet,p03,2026-09-24,882,8,lot-99052

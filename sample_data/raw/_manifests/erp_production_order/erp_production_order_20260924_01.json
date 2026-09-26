@@ -1,0 +1,15 @@
+{
+  "run_id": "erp_production_order_20260924_01",
+  "entity_name": "erp_production_order",
+  "source_system": "ORACLE_ERP",
+  "load_pattern": "ORACLE_WATERMARK",
+  "load_date": "2026-09-24",
+  "window_start": "1900-01-01 00:00:00",
+  "window_end": "2026-09-23 18:00:23",
+  "source_count": 24,
+  "rows_read": 24,
+  "rows_copied": 24,
+  "rows_skipped": 0,
+  "status": "VALIDATED",
+  "adf_pipeline_run_id": "adf-erp_production_order_20260924_01"
+}

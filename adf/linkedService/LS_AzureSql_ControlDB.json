@@ -1,0 +1,14 @@
+{
+    "name": "LS_AzureSql_ControlDB",
+    "properties": {
+        "type": "AzureSqlDatabase",
+        "description": "Metadata/control DB. Auth = ADF managed identity (CREATE USER ... FROM EXTERNAL PROVIDER).",
+        "typeProperties": {
+            "server": "sql-nf-mfg-dev.database.windows.net",
+            "database": "sqldb-nf-mfg-control",
+            "encrypt": "mandatory",
+            "trustServerCertificate": false,
+            "authenticationType": "SystemAssignedManagedIdentity"
+        }
+    }
+}

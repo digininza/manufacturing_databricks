@@ -1,0 +1,53 @@
+table 'Fact Supplier Delivery'
+
+	column delivery_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: DELIVERY_ID
+
+	column date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DATE_KEY
+
+	column supplier_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: SUPPLIER_SK
+
+	column plant_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PLANT_SK
+
+	column material_code
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MATERIAL_CODE
+
+	column delivered_qty
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DELIVERED_QTY
+
+	column rejected_qty
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: REJECTED_QTY
+
+	partition 'Fact Supplier Delivery' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_SUPPLIER_DELIVERY", Kind = "Table"]}[Data]
+				in
+				    Obj

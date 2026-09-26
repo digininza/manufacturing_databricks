@@ -1,0 +1,76 @@
+/// SCD2: every version is loaded; facts point at the version valid on the production day, so a machine moved from line L2 to L3 reports history under L2.
+table 'Machine'
+
+	column machine_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MACHINE_SK
+
+	column machine_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MACHINE_ID
+
+	column machine_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MACHINE_NAME
+
+	column plant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: PLANT_ID
+
+	column line_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: LINE_ID
+
+	column machine_type
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MACHINE_TYPE
+
+	column manufacturer
+		dataType: string
+		summarizeBy: none
+		sourceColumn: MANUFACTURER
+
+	column status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: STATUS
+
+	column rated_units_per_hour
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: RATED_UNITS_PER_HOUR
+
+	column effective_from
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn
+		summarizeBy: none
+		sourceColumn: EFFECTIVE_FROM
+
+	column effective_to
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn
+		summarizeBy: none
+		sourceColumn: EFFECTIVE_TO
+
+	column is_current
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: IS_CURRENT
+
+	partition 'Machine' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "DIM_MACHINE", Kind = "Table"]}[Data]
+				in
+				    Obj

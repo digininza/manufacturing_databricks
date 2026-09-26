@@ -1,0 +1,25 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	discourageImplicitMeasures
+	sourceQueryCulture: en-US
+
+	annotation PBI_QueryOrder = ["_Measures", "Date", "Plant", "Machine", "Product", "Defect Type", "Supplier", "Plant Entitlement", "Fact Production Daily", "Fact Machine Daily", "Fact Quality Inspection", "Fact Maintenance Event", "Fact Supplier Delivery", "Shopfloor Status", "Exec KPI Monthly"]
+
+ref table _Measures
+ref table Date
+ref table Plant
+ref table Machine
+ref table Product
+ref table 'Defect Type'
+ref table Supplier
+ref table 'Plant Entitlement'
+ref table 'Fact Production Daily'
+ref table 'Fact Machine Daily'
+ref table 'Fact Quality Inspection'
+ref table 'Fact Maintenance Event'
+ref table 'Fact Supplier Delivery'
+ref table 'Shopfloor Status'
+ref table 'Exec KPI Monthly'
+
+ref role 'Plant Scoped'

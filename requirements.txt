@@ -1,0 +1,3 @@
+# Runtime dependencies for code that runs ON Databricks (pyspark/delta are provided
+# by the Databricks Runtime itself and must NOT be pinned here).
+pyyaml>=6.0

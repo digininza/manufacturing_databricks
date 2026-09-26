@@ -1,0 +1,10 @@
+{
+    "name": "LS_ADLS_Gen2",
+    "properties": {
+        "type": "AzureBlobFS",
+        "description": "ADLS Gen2 (stnfmfgdev). Auth = ADF system-assigned managed identity with 'Storage Blob Data Contributor'. No account keys.",
+        "typeProperties": {
+            "url": "https://stnfmfgdev.dfs.core.windows.net/"
+        }
+    }
+}

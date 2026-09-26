@@ -1,0 +1,66 @@
+# NorthForge Industries — Manufacturing Modernization platform — dev environment.
+# NO SECRETS IN THIS FILE. Anything sensitive is referenced by
+# (secret_scope, secret_key) and resolved at runtime from the Azure Key
+# Vault-backed Databricks secret scope. All hostnames are placeholders.
+
+environment: dev
+
+unity_catalog:
+  catalog: mfg_dev
+  schemas:
+    control: control        # run log, audit, DQ results, reconciliation, watermarks
+    bronze: bronze          # raw, append-only, as landed by ADF / Event Hub
+    silver: silver          # cleansed, deduplicated, CDC-applied, conformed
+    quarantine: quarantine  # rows that failed ERROR-severity DQ rules
+    gold: gold              # star schema (facts + SCD2 dimensions)
+
+storage:
+  # ADLS Gen2 containers (accessed through Unity Catalog external locations —
+  # the Databricks Access Connector's managed identity, never account keys).
+  raw_root: abfss://raw@stnfmfgdev.dfs.core.windows.net
+  manifest_root: abfss://raw@stnfmfgdev.dfs.core.windows.net/_manifests
+  checkpoint_root: abfss://checkpoints@stnfmfgdev.dfs.core.windows.net
+  schema_root: abfss://checkpoints@stnfmfgdev.dfs.core.windows.net/_schemas
+
+eventhub:
+  namespace: evhns-nf-mfg-dev
+  hub_name: machine-telemetry
+  consumer_group: databricks-bronze
+  secret_scope: kv-nf-mfg-dev
+  secret_key: eventhub-machine-telemetry-listen-conn
+  max_events_per_trigger: 50000
+  starting_offsets: latest
+
+streaming:
+  late_data_watermark: "10 minutes"   # how late a sensor reading may arrive
+  aggregation_window: "1 minute"
+  bronze_trigger_seconds: 30
+  silver_trigger_seconds: 60
+
+snowflake:
+  url: REPLACE_WITH_ACCOUNT.snowflakecomputing.com
+  user: SVC_DATABRICKS_PUBLISHER
+  role: MFG_PUBLISHER_ROLE
+  warehouse: WH_MFG_LOAD
+  database: MFG_DW_DEV
+  schema: GOLD
+  stage_schema: STAGE
+  secret_scope: kv-nf-mfg-dev
+  private_key_secret: snowflake-publisher-private-key   # key-pair auth, no passwords
+
+reconciliation:
+  # Row-count tolerance (absolute). 0 = counts must match exactly before any
+  # watermark/checkpoint is allowed to advance.
+  count_tolerance: 0
+  # Relative tolerance for SUM(measure) checks (floating point / rounding).
+  amount_tolerance_pct: 0.0001
+
+alerting:
+  secret_scope: kv-nf-mfg-dev
+  webhook_secret_key: logicapp-alert-webhook-url   # Logic App -> Email + Teams
+  distribution_list: mfg-data-platform-alerts@example.com
+
+gold:
+  planned_minutes_per_shift: 480
+  shifts_per_day: 3
+  unknown_member_sk: -1

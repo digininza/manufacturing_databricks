@@ -1,0 +1,70 @@
+/// GRAIN: one inspection. Used for defect drill-through.
+table 'Fact Quality Inspection'
+
+	column inspection_id
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: INSPECTION_ID
+
+	column date_key
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DATE_KEY
+
+	column machine_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MACHINE_SK
+
+	column product_sk
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: PRODUCT_SK
+
+	column defect_code
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: DEFECT_CODE
+
+	column inspection_ts
+		dataType: dateTime
+		summarizeBy: none
+		sourceColumn: INSPECTION_TS
+
+	column sample_size
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: SAMPLE_SIZE
+
+	column defect_count
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: DEFECT_COUNT
+
+	column inspection_result
+		dataType: string
+		summarizeBy: none
+		sourceColumn: INSPECTION_RESULT
+
+	column inspector_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: INSPECTOR_ID
+
+	partition 'Fact Quality Inspection' = m
+		mode: import
+		source =
+				let
+				    Source = Snowflake.Databases(SnowflakeServer, SnowflakeWarehouse, [Role = "MFG_BI_READER_ROLE", Implementation = "2.0"]),
+				    Db = Source{[Name = SnowflakeDatabase, Kind = "Database"]}[Data],
+				    Sch = Db{[Name = "GOLD", Kind = "Schema"]}[Data],
+				    Obj = Sch{[Name = "FACT_QUALITY_INSPECTION", Kind = "Table"]}[Data]
+				in
+				    Obj

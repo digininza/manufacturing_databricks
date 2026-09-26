@@ -1,0 +1,9 @@
+# Local/CI development dependencies. The synthetic-data generator and the
+# pure-Python tests need NO Spark/Java. Spark-backed tests are skipped
+# automatically when pyspark or a JDK (11/17) is not available.
+-r requirements.txt
+pyspark==3.5.1
+delta-spark==3.2.0
+pytest>=7.4
+flake8==7.3.0
+black==25.11.0
