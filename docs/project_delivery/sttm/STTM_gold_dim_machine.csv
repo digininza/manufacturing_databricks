@@ -1,0 +1,12 @@
+mapping_id,source_system,source_object,source_column,source_type,target_layer,target_table,target_column,target_type,transformation_rule,null_handling,dq_rule,severity,key_type,scd_type,comments,status
+STTM-DM-01,derived,silver.mes_machine,"machine_id, effective_from",,gold,dim_machine,machine_sk,BIGINT,xxhash64(machine_id; effective_from) — deterministic,n/a,,,SK,,-1 reserved for Unknown member,Approved
+STTM-DM-02,silver,silver.mes_machine,machine_id,STRING,gold,dim_machine,machine_id,STRING,as is,n/a,,,BK,,,Approved
+STTM-DM-03,silver,silver.mes_machine,line_id,STRING,gold,dim_machine,line_id,STRING,as is,n/a,,,attribute,2,Line moves create a new version,Approved
+STTM-DM-04,silver,silver.mes_machine,status,STRING,gold,dim_machine,status,STRING,as is,n/a,,,attribute,2,,Approved
+STTM-DM-05,silver,silver.mes_machine,rated_units_per_hour,INT,gold,dim_machine,rated_units_per_hour,INT,as is,n/a,,,attribute,2,,Approved
+STTM-DM-06,silver,silver.mes_machine,"machine_name, plant_id, machine_type, manufacturer, install_date",,gold,dim_machine,(same names),,as is,n/a,,,attribute,2,All tracked in attr_hash,Approved
+STTM-DM-07,silver,silver.mes_machine,_is_deleted,BOOLEAN,gold,dim_machine,is_source_deleted,BOOLEAN,as is (tracked -> a delete closes the version),n/a,,,attribute,2,,Approved
+STTM-DM-08,derived,,tracked attributes,,gold,dim_machine,attr_hash,STRING,sha2(concat_ws('||' coalesce(attr '~')...) 256),n/a,,,audit,,Change detection,Approved
+STTM-DM-09,derived,silver.mes_machine,"source_modified_at / cdc_commit_ts",,gold,dim_machine,effective_from,TIMESTAMP,first version = 1900-01-01; later versions = source change timestamp,n/a,,,audit,2,,Approved
+STTM-DM-10,derived,,,,gold,dim_machine,effective_to,TIMESTAMP,9999-12-31 for current; next version's effective_from when superseded,n/a,,,audit,2,,Approved
+STTM-DM-11,derived,,,,gold,dim_machine,is_current,BOOLEAN,true for the open version,n/a,,,audit,2,Exactly one current row per machine_id (tested),Approved

@@ -123,6 +123,7 @@ manufacturing_databricks/
 | [docs/POWERBI_AND_SNOWFLAKE.md](docs/POWERBI_AND_SNOWFLAKE.md) | Publishing to Snowflake, **views vs semantic model**, Import vs DirectQuery, RLS |
 | [docs/SECURITY.md](docs/SECURITY.md) | Identities, Key Vault secrets, network, Unity Catalog, Snowflake and Power BI security |
 | [docs/LINEAGE.md](docs/LINEAGE.md) | Unity Catalog lineage, Purview for ADF, and run-level lineage columns |
+| [docs/project_delivery/](docs/project_delivery/README.md) | **Delivery documentation pack**: charter, BRD/KPI glossary, source interface agreements, profiling, HLD, LLD, STTM (CSV), NFR, security, DQ spec, test/UAT, release, ops handover, RACI/RAID/ADR, Confluence/Jira governance |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Production-support scenarios and their fixes |
 | [docs/INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md) | How to present the project, with a deep-dive Q&A |
 

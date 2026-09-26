@@ -1,0 +1,17 @@
+mapping_id,source_system,source_object,source_column,source_type,target_layer,target_table,target_column,target_type,transformation_rule,null_handling,dq_rule,severity,key_type,scd_type,comments,status
+STTM-FP-00,,,,,gold,fact_production_daily,(grain),,ONE ROW PER production_date x machine_id x product_id; source rows with _is_deleted = true excluded,,,,,,Grain approved in design review DR-04,Approved
+STTM-FP-01,silver,silver.mes_production_log,start_ts,TIMESTAMP,gold,fact_production_daily,production_date,DATE,to_date(start_ts) — shift start date,n/a,,,BK,,KPI glossary: production day,Approved
+STTM-FP-02,derived,,production_date,,gold,fact_production_daily,date_key,INT,yyyyMMdd,n/a,,,FK,,FK dim_date,Approved
+STTM-FP-03,gold,gold.dim_machine,machine_sk,BIGINT,gold,fact_production_daily,machine_sk,BIGINT,point-in-time lookup: first run start_ts between effective_from and effective_to,-1 if not found (late-arriving dim),,,FK,,,Approved
+STTM-FP-04,gold,gold.dim_product,product_sk,BIGINT,gold,fact_production_daily,product_sk,BIGINT,point-in-time lookup as above,-1,,,FK,,,Approved
+STTM-FP-05,gold,gold.dim_plant,plant_sk,BIGINT,gold,fact_production_daily,plant_sk,BIGINT,via machine version's plant_id,-1,,,FK,,,Approved
+STTM-FP-06,silver,silver.mes_production_log,production_log_id,BIGINT,gold,fact_production_daily,production_runs,BIGINT,count(*),0,,,measure,,Reconciled silver vs gold,Approved
+STTM-FP-07,silver,silver.mes_production_log,units_produced,INT,gold,fact_production_daily,units_produced,BIGINT,sum,0,,,measure,,Reconciled (SUM) silver vs gold and gold vs Snowflake,Approved
+STTM-FP-08,silver,silver.mes_production_log,units_scrapped,INT,gold,fact_production_daily,units_scrapped,BIGINT,sum,0,,,measure,,,Approved
+STTM-FP-09,derived,,,,gold,fact_production_daily,units_good,BIGINT,units_produced - units_scrapped,n/a,,,measure,,,Approved
+STTM-FP-10,silver,silver.mes_production_log,"start_ts, end_ts",,gold,fact_production_daily,run_minutes,"DECIMAL(12,2)",sum((end_ts - start_ts) in minutes),0,,,measure,,,Approved
+STTM-FP-11,derived,gold.dim_product,std_cycle_time_sec,INT,gold,fact_production_daily,ideal_units,INT,run_minutes * 60 / std_cycle_time_sec of the product VERSION valid that day,null if cycle time missing,,,measure,,Drives OEE performance,Approved
+STTM-FP-12,silver,silver.mes_quality_inspection,inspection_id,BIGINT,gold,fact_production_daily,inspections,BIGINT,count joined via production_log_id,0,,,measure,,,Approved
+STTM-FP-13,silver,silver.mes_quality_inspection,sample_size,INT,gold,fact_production_daily,sampled_units,BIGINT,sum,0,,,measure,,,Approved
+STTM-FP-14,silver,silver.mes_quality_inspection,defect_count,INT,gold,fact_production_daily,defect_units,BIGINT,sum,0,,,measure,,FPY = 1 - defect_units / sampled_units,Approved
+STTM-FP-15,silver,silver.mes_quality_inspection,inspection_result,STRING,gold,fact_production_daily,failed_inspections,BIGINT,sum(result = 'FAIL'),0,,,measure,,,Approved
