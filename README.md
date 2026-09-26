@@ -90,7 +90,7 @@ manufacturing_databricks/
 │   └── snowflake/           warehouses/roles/users, gold tables, reporting views, row access policy
 ├── configs/                 dev/test/prod + source_registry.yml (Databricks half of the metadata)
 ├── src/
-│   ├── common/              config, notebook helpers, logging
+│   ├── common/              config, notebook helpers, logging, performance (AQE, salting, sizing)
 │   ├── framework/           run context, control/watermarks, audit, alerting, DQ engine, reconciliation
 │   ├── datagen/             synthetic sources (2 business days: initial + incremental/CDC)
 │   ├── bronze/              Auto Loader + manifest reconciliation
@@ -98,8 +98,8 @@ manufacturing_databricks/
 │   ├── silver/              standardization, CDC merge, per-batch processor
 │   ├── gold/                SCD2 engine, dimensions, facts
 │   └── publish/             Snowflake publisher, Power BI refresh trigger
-├── notebooks/               Databricks task notebooks (00_setup … 06_publish) + 07_demos
-├── resources/jobs/          Asset Bundle jobs: batch pipeline, continuous IoT streaming, setup
+├── notebooks/               Databricks task notebooks (00_setup … 06_publish), 07_demos, 08_maintenance
+├── resources/jobs/          Asset Bundle jobs: batch pipeline, continuous IoT streaming, setup, weekly table maintenance
 ├── powerbi/                 PBIP project: TMDL semantic model, report spec, DAX reconciliation
 ├── tools/                   generators for the ADF JSON and the Power BI TMDL
 ├── sample_data/             small generated samples (raw layout, manifests, CDC explainer, API pages, IoT)
@@ -118,6 +118,7 @@ manufacturing_databricks/
 | [docs/DEVELOPER_STANDARDS.md](docs/DEVELOPER_STANDARDS.md) | The standards every developer follows, including onboarding a new source in 2 files |
 | [docs/DATA_QUALITY_AND_RECONCILIATION.md](docs/DATA_QUALITY_AND_RECONCILIATION.md) | DQ rules, quarantine, and the 5 reconciliation checkpoints |
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Star schema, grain, SCD2, surrogate keys, OEE definitions |
+| [docs/PERFORMANCE_AND_SCALE.md](docs/PERFORMANCE_AND_SCALE.md) | **Partitioning, repartition/coalesce, skew and salting, broadcast, OPTIMIZE / VACUUM / Z-ORDER, liquid clustering: file-by-file index** |
 | [docs/STREAMING.md](docs/STREAMING.md) | The IoT pipeline: Event Hub, watermarks, dedup, late data |
 | [docs/POWERBI_AND_SNOWFLAKE.md](docs/POWERBI_AND_SNOWFLAKE.md) | Publishing to Snowflake, **views vs semantic model**, Import vs DirectQuery, RLS |
 | [docs/SECURITY.md](docs/SECURITY.md) | Identities, Key Vault secrets, network, Unity Catalog, Snowflake and Power BI security |

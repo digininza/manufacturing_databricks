@@ -30,6 +30,7 @@ from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
 from src.common.notebook_utils import get_secret
+from src.common.performance import files_for
 from src.framework import reconciliation as recon
 from src.framework.control import advance_version_watermark, get_version_watermark, latest_table_version
 from src.framework.run_context import RunContext
@@ -123,6 +124,13 @@ def publish_table(spark: SparkSession, ctx: RunContext, spec: PublishSpec) -> Op
     stage_name = f"{spec.table.upper()}_CHANGES"
     target_name = f"{cfg.get('snowflake.schema')}.{spec.table.upper()}"
     data_cols = [c for c in changes.columns if c != "_change_type"]
+
+    # COALESCE before the upload: the connector writes ONE staged file per Spark partition. A CDF read
+    # over many small Delta files can yield hundreds of partitions of a few KB -> hundreds of tiny PUTs
+    # and a slow COPY in Snowflake. coalesce() (narrow, NO shuffle) merges partitions down to a sensible
+    # count; repartition() would shuffle all data just to resize, which we don't need here.
+    change_rows = changes.count()
+    changes = changes.coalesce(files_for(change_rows, rows_per_file=1_000_000, max_files=32))
 
     changes.select(*data_cols, F.col("_change_type").alias("_CHANGE_TYPE")).write.format("snowflake").options(**opts_stage).option("dbtable", stage_name).mode(
         "overwrite"

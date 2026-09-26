@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import List
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from src.common.config import EntityConfig
 from src.common.logging_utils import get_logger
+from src.common.performance import apply_batch_tuning
 from src.framework import reconciliation as recon
 from src.framework.alerting import send_alert
 from src.framework.control import log_run
@@ -37,15 +39,28 @@ from src.silver.transformations import add_silver_metadata, standardize
 log = get_logger(__name__)
 
 
-def ensure_silver_table(spark: SparkSession, target: str, sample: DataFrame) -> None:
+def ensure_silver_table(spark: SparkSession, target: str, sample: DataFrame, cluster_keys: List[str]) -> None:
     if not spark.catalog.tableExists(target):
         sample.limit(0).write.format("delta").saveAsTable(target)
         spark.sql(
             f"ALTER TABLE {target} SET TBLPROPERTIES ("
             "'delta.enableChangeDataFeed' = 'true', "  # gold + Snowflake publish read changes, not full tables
+            # optimizeWrite: Delta shuffles the write so each file is ~128 MB instead of one small file
+            # per task -> fixes the small-file problem at write time (every micro-batch writes here)
             "'delta.autoOptimize.optimizeWrite' = 'true', "
+            # autoCompact: after a write, small files in the touched area are compacted automatically
+            "'delta.autoOptimize.autoCompact' = 'true', "
+            # deletion vectors: MERGE marks changed rows in a side-file instead of rewriting whole
+            # 128 MB parquet files -> a CDC batch touching 10k rows no longer rewrites GBs
             "'delta.enableDeletionVectors' = 'true')"
         )
+        # LIQUID CLUSTERING on the PRIMARY KEY (not Hive partitioning):
+        # the CDC MERGE joins on the primary key; clustering co-locates key ranges in few files, so
+        # the MERGE's file pruning reads/rewrites only files whose min/max key range matches the
+        # batch instead of scanning the whole table. Hive-style partitionBy(production_log_id)
+        # would create millions of directories — never partition by a high-cardinality column.
+        # OPTIMIZE (src/framework/table_maintenance.py) incrementally re-clusters.
+        spark.sql(f"ALTER TABLE {target} CLUSTER BY ({', '.join(cluster_keys)})")
 
 
 def make_batch_processor(spark: SparkSession, ctx: RunContext, entity: EntityConfig):
@@ -80,7 +95,7 @@ def make_batch_processor(spark: SparkSession, ctx: RunContext, entity: EntityCon
                 )
 
             latest = latest.drop("cdc_update_mask", "_source_file_ts")
-            ensure_silver_table(spark, target, latest)
+            ensure_silver_table(spark, target, latest, entity.primary_keys)
             latest.createOrReplaceTempView(f"_silver_src_{entity.name}")
             spark.sql(build_merge_sql(target, f"_silver_src_{entity.name}", entity.primary_keys, latest.columns))
             metrics = spark.sql(f"DESCRIBE HISTORY {target} LIMIT 1").collect()[0]["operationMetrics"]
@@ -134,8 +149,12 @@ def make_batch_processor(spark: SparkSession, ctx: RunContext, entity: EntityCon
 
 
 def run_silver_entity(spark: SparkSession, ctx: RunContext, entity: EntityConfig) -> None:
+    apply_batch_tuning(spark)  # AQE + skew-join splitting + broadcast threshold (src/common/performance.py)
     query = (
         spark.readStream.format("delta")
+        # micro-batch SIZE control: on a TB backfill (e.g. first CDC load) availableNow still splits the
+        # backlog into batches of <= 200 bronze files, so each foreachBatch MERGE stays bounded in
+        # memory/shuffle instead of one giant batch that spills and, if it fails, reprocesses everything
         .option("maxFilesPerTrigger", 200)
         .table(ctx.config.fq("bronze", entity.name))
         .writeStream.foreachBatch(make_batch_processor(spark, ctx, entity))

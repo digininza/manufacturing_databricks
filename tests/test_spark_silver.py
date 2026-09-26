@@ -74,3 +74,14 @@ def test_day2_latest_version_wins_and_deletes_flagged(spark, generated):
     assert by_id[100001]["units_scrapped"] == day1[100001]["units_scrapped"] + 3
     assert by_id[100002]["_is_deleted"] and by_id[100003]["_is_deleted"]
     assert not by_id[100009]["_is_deleted"] and by_id[100009]["units_scrapped"] == 4
+
+
+def test_salted_join_returns_same_rows_as_plain_join(spark):
+    """Salting must change the PLAN, never the RESULT."""
+    from src.common.performance import salted_join
+
+    big = spark.createDataFrame([("HOT", i) for i in range(500)] + [("COLD", i) for i in range(10)], "machine_id STRING, reading INT")
+    runs = spark.createDataFrame([("HOT", "run1"), ("COLD", "run2")], "machine_id STRING, run STRING")
+    plain = sorted(big.join(runs, "machine_id").collect())
+    salted = sorted(salted_join(big, runs, "machine_id", salt_buckets=8).select(*big.columns, "run").collect())
+    assert plain == salted

@@ -33,9 +33,11 @@ from typing import Dict, List, Optional, Tuple
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from src.common.performance import apply_batch_tuning
 from src.framework import reconciliation as recon
 from src.framework.control import advance_version_watermark, get_version_watermark, latest_table_version
 from src.framework.run_context import RunContext
+from src.gold.process_sensor_stats import build_fact_process_run_sensor
 from src.gold.scd2 import point_in_time_join
 
 CONSUMER = "gold_facts"
@@ -89,6 +91,13 @@ def merge_fact(
     df.createOrReplaceTempView("_fact_src")
     cols = df.columns
     on = " AND ".join(f"t.{g} <=> s.{g}" for g in grain)
+    if date_col and dates is not None:
+        # PARTITION/FILE PRUNING INSIDE MERGE: a target-only predicate in the ON clause lets Delta skip
+        # every file whose min/max production_date (liquid-clustered on production_date) is outside the
+        # affected dates. Without it, MERGE scans and joins against the ENTIRE multi-year fact to update
+        # 3 days — the #1 cause of slow MERGEs at TB scale. Rows outside the window are untouched, and
+        # the NOT MATCHED BY SOURCE clause below is restricted to the same dates, so nothing is lost.
+        on += f" AND {_date_filter('t.' + date_col, dates)}"
     not_by_source = ""
     if date_col:
         not_by_source = f"WHEN NOT MATCHED BY SOURCE AND {_date_filter('t.' + date_col, dates)} THEN DELETE"
@@ -111,6 +120,9 @@ def build_fact_production_daily(spark: SparkSession, ctx: RunContext, dates: Opt
     prod = prod.filter(_date_filter("production_date", dates))
     insp = spark.table(cfg.fq("silver", "mes_quality_inspection")).filter("_is_deleted = false")
 
+    # AGGREGATION + SKEW: groupBy(date, machine, product) sums/counts. Spark aggregates PARTIALLY in each
+    # map task before the shuffle, so even a machine with 10x more runs sends only one partial row per
+    # task -> no straggler; AQE then coalesces the small post-shuffle partitions. No salting needed here.
     runs = prod.groupBy("production_date", "machine_id", "product_id").agg(
         F.min("start_ts").alias("first_run_start_ts"),
         F.count(F.lit(1)).alias("production_runs"),
@@ -141,9 +153,11 @@ def build_fact_production_daily(spark: SparkSession, ctx: RunContext, dates: Opt
     std = dim_product.select(F.col("product_sk").alias("_psk"), "std_cycle_time_sec")
     plant = dim_machine.select(F.col("machine_sk").alias("_msk"), "plant_id")
     fact = (
-        fact.join(std, F.col("product_sk") == F.col("_psk"), "left")
-        .join(plant, F.col("machine_sk") == F.col("_msk"), "left")
-        .join(spark.table(cfg.fq("gold", "dim_plant")).select("plant_id", "plant_sk"), "plant_id", "left")
+        # dimension lookups: all tiny -> explicit BROADCAST (no shuffle of the fact side, so the
+        # 'UNKNOWN'/-1 hot key of late-arriving rows can't create a skewed partition either)
+        fact.join(F.broadcast(std), F.col("product_sk") == F.col("_psk"), "left")
+        .join(F.broadcast(plant), F.col("machine_sk") == F.col("_msk"), "left")
+        .join(F.broadcast(spark.table(cfg.fq("gold", "dim_plant")).select("plant_id", "plant_sk")), "plant_id", "left")
         .withColumn("plant_sk", F.coalesce("plant_sk", F.lit(-1).cast("bigint")))
         .withColumn("ideal_units", F.when(F.col("std_cycle_time_sec") > 0, (F.col("run_minutes") * 60 / F.col("std_cycle_time_sec")).cast("int")))
         .withColumn("units_good", F.col("units_produced") - F.col("units_scrapped"))
@@ -364,11 +378,13 @@ def build_all_facts(spark: SparkSession, ctx: RunContext) -> List[recon.ReconRes
     wo_dates = affected_dates(wo_changes, "to_date(reported_at)")
     dates = union_dates(prod_dates, insp_dates, wo_dates)
 
+    apply_batch_tuning(spark)
     results = [build_fact_production_daily(spark, ctx, dates)]
     recon.persist_results(spark, ctx, results)
     recon.assert_all_passed(results)  # raise BEFORE any watermark moves
 
     build_fact_machine_daily(spark, ctx, dates)
+    build_fact_process_run_sensor(spark, ctx, dates)  # the skew-heavy join: broadcast vs salting, see module doc
     build_fact_quality_inspection(spark, ctx)
     build_fact_maintenance_event(spark, ctx)
     build_fact_supplier_delivery(spark, ctx)

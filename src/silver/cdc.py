@@ -27,6 +27,16 @@ from pyspark.sql import functions as F
 def deduplicate_latest(df: DataFrame, keys: List[str]) -> Tuple[DataFrame, int]:
     """Returns (one row per key, number of rows removed)."""
     before = df.count()
+    # PERFORMANCE — REPARTITION BY THE BUSINESS KEY, ONCE.
+    # Both steps below need all versions of a key in the same partition:
+    #   dropDuplicates(all columns)       -> needs rows clustered by (all columns)
+    #   Window.partitionBy(keys)          -> needs rows clustered by (keys)
+    # Hash-partitioning by `keys` satisfies BOTH (keys are a subset of all columns), so Spark
+    # plans ONE shuffle instead of two. On a 500M-row CDC backfill that halves the shuffle volume.
+    # Key choice: the primary key (e.g. production_log_id) is high-cardinality and unique-ish, so
+    # it spreads evenly — no skew here. (Skew would come from a low-cardinality key such as
+    # machine_id; that is exactly why we never partition silver work by machine_id.)
+    df = df.repartition(*keys)
     exact = df.dropDuplicates([c for c in df.columns if c not in ("_ingest_ts", "_source_file", "_source_file_ts", "_silver_updated_ts")])
     w = Window.partitionBy(*keys).orderBy(F.col("_sequence").desc())
     latest = exact.withColumn("_rn", F.row_number().over(w)).filter("_rn = 1").drop("_rn")

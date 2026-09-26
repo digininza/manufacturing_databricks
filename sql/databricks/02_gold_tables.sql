@@ -68,6 +68,24 @@ CREATE TABLE IF NOT EXISTS ${catalog}.gold.fact_machine_daily (
   COMMENT 'GRAIN: one row per production_date x machine. OEE = availability x performance x quality'
   TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
 
+CREATE TABLE IF NOT EXISTS ${catalog}.gold.fact_process_run_sensor (
+  production_log_id BIGINT, sensor_type STRING, date_key INT, production_date DATE, machine_id STRING, product_id STRING,
+  reading_count BIGINT, avg_value DECIMAL(12,3), min_value DECIMAL(12,3), max_value DECIMAL(12,3), stddev_value DECIMAL(12,3),
+  _pipeline_run_id STRING, _gold_updated_ts TIMESTAMP
+) CLUSTER BY (production_date, machine_id)
+  COMMENT 'GRAIN: production run x sensor_type. Built by a broadcast join (daily) or SALTED join (backfill)'
+  TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
+
+-- WHY LIQUID CLUSTERING (CLUSTER BY) AND NOT partitionBy / ZORDER FOR GOLD:
+--  * gold facts are queried and MERGEd by production_date (+ machine). Hive partitioning by date would
+--    give ~1,100 partitions of only ~5-50 MB each for these daily facts -> small-file problem, and the
+--    partition column can never be changed without a full rewrite.
+--  * liquid clustering gives the same data skipping (min/max per file on production_date, machine_id),
+--    works on any data size, keys can be changed with ALTER TABLE ... CLUSTER BY, and OPTIMIZE
+--    re-clusters incrementally (only new/unclustered files) — ZORDER rewrites whole partitions.
+--  * ZORDER is NOT allowed on a liquid-clustered table; we use ZORDER only on the Hive-partitioned
+--    IoT tables (src/framework/table_maintenance.py).
+
 CREATE TABLE IF NOT EXISTS ${catalog}.gold.fact_quality_inspection (
   inspection_id BIGINT, date_key INT, machine_sk BIGINT, product_sk BIGINT, defect_code STRING,
   production_log_id BIGINT, inspection_ts TIMESTAMP, sample_size INT, defect_count INT,

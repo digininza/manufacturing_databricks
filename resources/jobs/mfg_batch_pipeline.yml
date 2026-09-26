@@ -43,8 +43,18 @@ resources:
             data_security_mode: SINGLE_USER
             runtime_engine: PHOTON
             spark_conf:
+              # write-time file sizing (fights small files from MERGE / micro-batches)
               spark.databricks.delta.optimizeWrite.enabled: "true"
               spark.databricks.delta.autoCompact.enabled: "auto"
+              # Adaptive Query Execution: runtime re-planning with real shuffle sizes
+              spark.sql.adaptive.enabled: "true"
+              spark.sql.adaptive.coalescePartitions.enabled: "true"      # merge tiny shuffle partitions
+              spark.sql.adaptive.advisoryPartitionSizeInBytes: "128m"
+              spark.sql.adaptive.skewJoin.enabled: "true"                # split skewed join partitions
+              spark.sql.adaptive.skewJoin.skewedPartitionFactor: "5"
+              spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes: "256m"
+              spark.sql.autoBroadcastJoinThreshold: "64m"                # dimensions are broadcast
+              spark.sql.shuffle.partitions: "auto"                        # Databricks auto-sizes, AQE refines
 
       tasks:
         - task_key: bronze_autoloader

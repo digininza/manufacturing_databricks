@@ -58,6 +58,9 @@ def ingest_entity_to_bronze(spark: SparkSession, config: Config, entity: EntityC
         .writeStream.format("delta")
         .option("checkpointLocation", config.checkpoint("bronze", entity.name))
         .option("mergeSchema", "true")
+        # No partitionBy here: an ADF run for a daily entity is often only MBs, so partitioning by
+        # _load_date would produce tiny partitions. Files are compacted weekly by OPTIMIZE
+        # (src/framework/table_maintenance.py); optimizeWrite (cluster conf) sizes files at write time.
         .trigger(availableNow=True)
         .queryName(f"bronze_{entity.name}")
         .toTable(target)

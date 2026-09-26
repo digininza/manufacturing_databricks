@@ -93,7 +93,12 @@ def point_in_time_join(fact: DataFrame, dim: DataFrame, business_key: str, event
     )
     cond = (fact[business_key] == d["_d_key"]) & (fact[event_ts_col] >= d["_eff_from"]) & (fact[event_ts_col] < d["_eff_to"])
     return (
-        fact.join(d, cond, "left")
+        # BROADCAST the dimension: a few thousand SCD2 versions (~MBs) are copied to every executor,
+        # so the multi-billion-row fact is joined IN PLACE — no shuffle of the fact, therefore no skew
+        # even if one machine owns 30% of the rows. It matters doubly because this is a RANGE
+        # (non-equi) join on effective_from/to: without the hint Spark may choose a sort-merge join on
+        # business_key only, and a hot key then lands in a single straggler task.
+        fact.join(F.broadcast(d), cond, "left")
         .withColumn(sk_col, F.coalesce(F.col(f"_{sk_col}"), F.lit(unknown_sk).cast("bigint")))
         .drop("_d_key", f"_{sk_col}", "_eff_from", "_eff_to")
     )

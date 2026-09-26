@@ -58,6 +58,12 @@ def start_bronze_stream(spark: SparkSession, config: Config):
     )
     return (
         bronze.writeStream.format("delta")
+        # HIVE-STYLE PARTITIONING by _ingest_date — the one place we use partitionBy, because it fits
+        # the rules of thumb: (1) append-only, time-ordered data; (2) LOW cardinality (1 value/day);
+        # (3) each partition is LARGE (~15-25 GB/day of raw JSON >> the 1 GB minimum per partition);
+        # (4) every consumer filters by date (replays, retention deletes, VACUUM scope).
+        # Never partition by machine_id/device_id: skewed sizes + thousands of tiny directories.
+        .partitionBy("_ingest_date")
         .option("checkpointLocation", config.checkpoint("bronze", "iot_sensor_raw"))
         .trigger(processingTime=f"{config.get('streaming.bronze_trigger_seconds')} seconds")
         .queryName("bronze_iot_sensor_raw")

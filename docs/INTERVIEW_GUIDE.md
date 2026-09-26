@@ -115,6 +115,26 @@ Then the DQ rules (ERROR → quarantine, WARN → flag), exact and latest-per-ke
 
 Each check gates the next step, and a report task fails the job if any break is open. That blocks the Power BI refresh.
 
+### Performance at scale
+**Q: How did you handle skew?**
+- **Broadcast first:** all dimension lookups, including the SCD2 point-in-time range join, broadcast the dimension. The fact never shuffles, so a hot machine or the `-1` unknown key can't create a straggler.
+- **AQE:** skew-join splitting and partition coalescing are enabled on every batch cluster.
+- **Salting:** used on the one join where broadcast isn't possible. In a backfill, sensor readings (billions of rows, only ~40 machine keys, presses emit 10× more) are joined to production runs. The readings get a salt of 0..31, the runs are replicated 32×, and the join is on `(machine_id, salt)`.
+- **Aggregations:** plain sum/count skew is handled by Spark's partial aggregation, so I don't salt those.
+
+**Q: Partitioning strategy?**
+- `partitionBy` is used only for the IoT tables (by date): they are append-only, 15-25 GB per day, and always filtered by date.
+- Everything else uses **liquid clustering**. Gold is clustered on `(production_date, machine_id)` and silver on the primary key. Hive-partitioning daily facts would create thousands of tiny partitions.
+- Before the silver dedup I repartition by the primary key once, so `dropDuplicates` and the window share a single shuffle.
+- `coalesce` (not `repartition`) shrinks the Snowflake change set without a shuffle.
+
+**Q: OPTIMIZE / VACUUM / Z-ORDER?**
+- A weekly maintenance job runs `OPTIMIZE`. On liquid-clustered tables that means incremental clustering; on bronze it means bin-packing.
+- The partitioned IoT tables get `ZORDER BY (machine_id, sensor_type)`, restricted to the last 3 partitions.
+- `VACUUM RETAIN 168 HOURS`, which is longer than the time-travel window and the Change Data Feed consumer lag.
+- `ANALYZE` on gold tables keeps optimizer statistics current.
+- MERGEs put `production_date IN (affected dates)` in the ON clause so Delta prunes files instead of scanning years of data.
+
 ### Modelling
 **Q: What was the grain of your facts?**
 - `fact_production_daily` = day × machine × product: units, scrap, run minutes, ideal units, inspections, defects.

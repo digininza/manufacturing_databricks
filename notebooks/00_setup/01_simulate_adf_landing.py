@@ -34,6 +34,8 @@ for entity, entity_batches in batches.items():
     cols = list(dict.fromkeys(k for r in b.rows for k in r))  # ordered union of keys
     # land everything as STRING: bronze keeps source values verbatim, silver owns the casting
     df = spark.createDataFrame([tuple(None if r.get(c) is None else str(r[c]) for c in cols) for r in b.rows], ", ".join(f"`{c}` STRING" for c in cols))
+    # coalesce(1): the demo batch is a few hundred rows and ADF writes ONE file per run (deterministic
+    # <run_id>.parquet name). Fine here; NEVER coalesce(1) real volumes — it funnels everything into one task.
     df.coalesce(1).write.mode("overwrite").parquet(f"{folder}/_tmp")
     part = [f.path for f in dbutils.fs.ls(f"{folder}/_tmp") if f.path.endswith(".parquet")][0]  # noqa: F821
     dbutils.fs.mv(part, f"{folder}/{b.run_id}.parquet")  # noqa: F821

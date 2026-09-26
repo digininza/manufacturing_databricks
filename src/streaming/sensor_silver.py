@@ -55,6 +55,12 @@ def parsed_readings(spark: SparkSession, config: Config):
 
 
 def start_silver_streams(spark: SparkSession, config: Config):
+    # SHUFFLE PARTITIONS FOR STATEFUL STREAMING must be set BEFORE the first start and never changed:
+    # dropDuplicatesWithinWatermark and the window aggregation keep STATE partitioned into exactly this
+    # many buckets, and the number is frozen into the checkpoint. AQE does not apply to stateful
+    # operators. 64 = 2 workers x 8 cores x 4 -> parallel enough, and each state partition stays small.
+    # (Changing it later requires a new checkpoint = reprocessing from Event Hub retention.)
+    spark.conf.set("spark.sql.shuffle.partitions", "64")
     parsed, is_valid = parsed_readings(spark, config)
     late = config.get("streaming.late_data_watermark")
     trigger = f"{config.get('streaming.silver_trigger_seconds')} seconds"
@@ -73,6 +79,11 @@ def start_silver_streams(spark: SparkSession, config: Config):
     readings_q = (
         clean.withColumn("event_date", F.to_date("event_ts"))
         .writeStream.format("delta")
+        # partitioned by EVENT date (not ingest date): readers ask "readings during day D", so
+        # gold/process_sensor_stats.py prunes to 2 date folders out of years of data.
+        # Within a partition, OPTIMIZE ... ZORDER BY (machine_id, sensor_type) co-locates each
+        # machine's readings (src/framework/table_maintenance.py) -> per-machine queries skip files.
+        .partitionBy("event_date")
         .option("checkpointLocation", config.checkpoint("silver", "iot_sensor_reading"))
         .trigger(processingTime=trigger)
         .queryName("silver_iot_sensor_reading")
