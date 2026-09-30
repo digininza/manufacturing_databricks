@@ -20,6 +20,8 @@
 | Ops handover (13) | | I | C | C | R | R | | | | | **A** |
 
 ## 2. RAID log (examples)
+
+> The full, live-style RAID log is in [17_RAID_LOG.md](17_RAID_LOG.md), and the scored risk register with heat maps is in [16_RISK_MATRIX.md](16_RISK_MATRIX.md). The table below is the short summary shown at kick-off.
 | ID | Type | Description | Owner | Mitigation / action | Status |
 |---|---|---|---|---|---|
 | R-01 | Risk | Oracle hard deletes not visible to the watermark load | Architect | ICD: ERP soft-deletes; weekly key compare; GoldenGate in phase 2 | Open |

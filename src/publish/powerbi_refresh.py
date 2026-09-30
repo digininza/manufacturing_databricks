@@ -15,7 +15,7 @@ import json
 import urllib.parse
 import urllib.request
 
-from src.common.notebook_utils import get_secret
+from src.common.notebook_utils import get_secret, require_https
 from src.framework.run_context import RunContext
 
 
@@ -28,8 +28,9 @@ def _token(tenant_id: str, client_id: str, client_secret: str) -> str:
             "scope": "https://analysis.windows.net/powerbi/api/.default",
         }
     ).encode()
-    req = urllib.request.Request(f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token", data=body, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    req = urllib.request.Request(require_https(f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"), data=body, method="POST")
+    # bandit B310 (urlopen scheme): https enforced by require_https() above
+    with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
         return json.loads(resp.read())["access_token"]
 
 
@@ -38,10 +39,11 @@ def trigger_refresh(ctx: RunContext, workspace_id: str, dataset_id: str) -> int:
     token = _token(get_secret(scope, "powerbi-tenant-id"), get_secret(scope, "powerbi-sp-client-id"), get_secret(scope, "powerbi-sp-client-secret"))
     body = json.dumps({"notifyOption": "MailOnFailure", "type": "Full", "commitMode": "transactional", "applyRefreshPolicy": True}).encode()
     req = urllib.request.Request(
-        f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes",
+        require_https(f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes"),
         data=body,
         method="POST",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    # bandit B310 (urlopen scheme): https enforced by require_https() above
+    with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
         return resp.status  # 202 Accepted

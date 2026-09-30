@@ -1,3 +1,23 @@
+# ----------------------------------------------------------------------------- packaging
+# `python -m build --wheel` produces dist/northforge_mfg-<version>-py3-none-any.whl — the versioned,
+# immutable artifact that CI uploads and every deployment stage (dev -> test -> prod) reuses.
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "northforge-mfg"
+version = "1.0.0"
+description = "NorthForge manufacturing modernization: ingestion framework, medallion transforms, publish"
+requires-python = ">=3.9"
+dependencies = ["pyyaml>=6.0"]     # pyspark / delta are provided by the Databricks Runtime
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yml"]
+
 [tool.black]
 line-length = 160
 target-version = ["py311"]
@@ -9,3 +29,9 @@ extend-exclude = '''
   | spark-warehouse
 )/
 '''
+
+[tool.bandit]
+# B311 (random module): randomness is only used for SYNTHETIC test data and join salting,
+# never for anything security-related (tokens, keys, passwords).
+skips = ["B311"]
+exclude_dirs = ["tests", ".venv"]

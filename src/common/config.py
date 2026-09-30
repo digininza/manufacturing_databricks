@@ -9,6 +9,7 @@ metadata-driven framework (the ADF half is the ctl.ingestion_control table).
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
@@ -20,6 +21,7 @@ CONFIG_DIR = REPO_ROOT / "configs"
 
 VALID_LOAD_PATTERNS = {"SQLSERVER_CDC", "ORACLE_WATERMARK", "ORACLE_FULL", "REST_API", "ADLS_FILE"}
 VALID_SEVERITIES = {"ERROR", "WARN"}
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 VALID_TRANSFORMS = {"trim", "upper", "lower", "initcap", "empty_to_null"}
 
 
@@ -40,9 +42,14 @@ class Config:
 
     def fq(self, layer: str, table: str) -> str:
         """catalog.schema.table in Unity Catalog; schema.table when catalog is empty (local tests)."""
-        if not self.catalog:
-            return f"{self.schema(layer)}.{table}"
-        return f"{self.catalog}.{self.schema(layer)}.{table}"
+        parts = ([self.catalog] if self.catalog else []) + [self.schema(layer), table]
+        # Table names end up inside SQL strings (MERGE / DESCRIBE HISTORY). They come from config,
+        # never from users, but we still refuse anything that is not a plain identifier, so a
+        # bad config value can never become SQL injection (bandit B608).
+        for part in parts:
+            if not _IDENTIFIER.match(part):
+                raise ValueError(f"invalid SQL identifier in config: {part!r}")
+        return ".".join(parts)
 
     def get(self, dotted_path: str, default: Any = None) -> Any:
         node: Any = self.raw

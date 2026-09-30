@@ -1,3 +1,5 @@
+-- sqlfluff:ignore:parsing
+-- ^ admin/DBA script: GRANT/ALTER ROLE/RESOURCE MONITOR forms are valid SQL that sqlfluff's dialect cannot parse yet.
 /* =============================================================================
    SOURCE: on-prem SQL Server 2019 — MES database (Manufacturing Execution System)
    Shows the source tables and HOW CDC IS ENABLED. Run by the source DBA, not by us.

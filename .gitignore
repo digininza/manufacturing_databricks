@@ -34,3 +34,7 @@ powerbi/**/.pbi/cache.abf
 .idea/
 .vscode/
 *.swp
+
+# Build outputs (CI builds the wheel; never commit it)
+build/
+dist/

@@ -1,3 +1,5 @@
+-- sqlfluff:ignore:parsing
+-- ^ admin/DBA script: GRANT/ALTER ROLE/RESOURCE MONITOR forms are valid SQL that sqlfluff's dialect cannot parse yet.
 -- =============================================================================
 -- SNOWFLAKE SERVING LAYER — account objects (run as SECURITYADMIN / SYSADMIN)
 -- Databricks publishes gold here; Power BI reads from here.

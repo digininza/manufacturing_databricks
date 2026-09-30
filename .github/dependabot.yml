@@ -1,0 +1,13 @@
+# Weekly PRs that upgrade vulnerable / outdated dependencies. Each PR runs the full CI, so an
+# upgrade that breaks tests or formatting is caught before merge.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule: {interval: weekly}
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    labels: [dependencies, ci]

@@ -85,3 +85,33 @@ def test_salted_join_returns_same_rows_as_plain_join(spark):
     plain = sorted(big.join(runs, "machine_id").collect())
     salted = sorted(salted_join(big, runs, "machine_id", salt_buckets=8).select(*big.columns, "run").collect())
     assert plain == salted
+
+
+def test_only_valid_rows_are_promoted_to_silver(spark):
+    """
+    The unit-test version of "only ACTIVE customers go from raw to silver".
+
+    A unit test does NOT look at production data. It feeds a tiny, hand-made input where WE already
+    know the right answer (3 good rows, 3 bad rows), runs the real transformation code, and asserts
+    the exact output. If someone breaks the filter (e.g. deletes a DQ rule), this fails in CI —
+    before the code ever reaches a real pipeline.
+
+    Checking REAL incoming data every run (incoming count == promoted + rejected) is a different
+    thing: that is the runtime RECONCILIATION in src/silver/processor.py (BRONZE_TO_SILVER).
+    """
+    cdc = {"cdc_start_lsn": "0x00000000000000000001", "cdc_operation": 2}
+    good = {"machine_id": "M-P01-01", "product_id": "PRD-1001", "start_ts": "2026-09-24 06:00:00", "end_ts": "2026-09-24 14:00:00"}
+    rows = [
+        dict(cdc, cdc_seqval="0x01", production_log_id=1, units_produced=100, units_scrapped=2, **good),  # valid
+        dict(cdc, cdc_seqval="0x02", production_log_id=2, units_produced=50, units_scrapped=0, **good),  # valid
+        dict(cdc, cdc_seqval="0x03", production_log_id=3, units_produced=80, units_scrapped=80, **good),  # valid (edge: scrap == produced)
+        dict(cdc, cdc_seqval="0x04", production_log_id=4, units_produced=-5, units_scrapped=0, **good),  # INVALID: negative units
+        dict(cdc, cdc_seqval="0x05", production_log_id=5, units_produced=10, units_scrapped=11, **good),  # INVALID: scrap > produced
+        dict(cdc, cdc_seqval="0x06", production_log_id=6, units_produced=10, units_scrapped=0, **dict(good, machine_id=None)),  # INVALID: no machine
+    ]
+
+    latest, quarantined, dups, _ = silver_pipeline(spark, rows)
+
+    assert sorted(r["production_log_id"] for r in latest.collect()) == [1, 2, 3]  # exactly the good rows promoted
+    assert sorted(r["production_log_id"] for r in quarantined.collect()) == [4, 5, 6]  # bad rows kept aside, not lost
+    assert latest.count() + quarantined.count() + dups == len(rows)  # nothing silently dropped

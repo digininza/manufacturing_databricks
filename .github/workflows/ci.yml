@@ -1,35 +1,168 @@
+# =============================================================================
+# CI — runs on every pull request and every push to main.
+#
+#   lint ─┐
+#         ├─► unit-tests ─┐
+#   security ─────────────┴─► build-and-package ─► (artifact: northforge-mfg-<sha>)
+#                                                         │
+#                                         cd.yml deploys THIS artifact dev → test → prod
+#
+# Any red job = the whole run is red = the PR cannot be merged (branch protection:
+# "Require status checks to pass": lint, security, unit-tests, build-and-package).
+# On failure the `notify-failure` job posts to the team channel (and GitHub e-mails the author).
+# Plain-language walkthrough: docs/CI_CD.md
+# =============================================================================
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:                     # a newer push to the same branch cancels the older, still-running CI
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
 
 jobs:
-  test:
+  # ---------------------------------------------------------------- 1. LINT (style + static correctness)
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - uses: actions/setup-java@v4       # enables the Spark tests (tests/test_spark_*.py)
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt -r requirements-ci.txt
+      - name: Python formatting (black)
+        run: black --check --diff .
+      - name: Python lint (flake8)
+        run: flake8 .
+      - name: SQL lint (sqlfluff, dialect per folder, see .sqlfluff)
+        run: sqlfluff lint sql --format github-annotation-native   # findings appear inline on the PR diff
+
+  # ---------------------------------------------------------------- 2. SECURITY (code, dependencies, secrets)
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                       # full history: a secret committed in an OLD commit is still a leak
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-ci.txt
+      - name: SAST with bandit (fail on medium+ severity with high confidence)
+        run: |
+          bandit -c pyproject.toml -r src tools -f json -o bandit-report.json || true   # full report kept for review
+          bandit -c pyproject.toml -r src tools --severity-level medium --confidence-level high
+      - name: Dependency vulnerabilities with pip-audit (project runtime + test dependencies)
+        # Ignored IDs are black/click advisories. black is a local formatter that never runs in production;
+        # upgrading it changes code style, so it is tracked as its own PR (Dependabot). Re-check at each upgrade.
+        run: >
+          pip-audit -r requirements.txt -r requirements-dev.txt --progress-spinner off
+          --ignore-vuln PYSEC-2026-2121 --ignore-vuln PYSEC-2026-2120 --ignore-vuln PYSEC-2026-2132
+      - name: Secret scan with gitleaks (full git history)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks git . --redact --no-banner -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: bandit-report.json
+          retention-days: 30
+
+  # ---------------------------------------------------------------- 3. UNIT + COMPONENT TESTS
+  unit-tests:
+    needs: lint                                # don't spend test minutes on code that doesn't even lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-java@v4            # a JDK makes the Spark tests (tests/test_spark_*.py) run here
         with:
           distribution: temurin
           java-version: "17"
       - run: pip install -r requirements-dev.txt
-      - run: black --check .
-      - run: flake8 .
-      - run: pytest -q -rs
+      - name: pytest (pure-Python + Spark tests, JUnit + coverage reports)
+        run: pytest -rs --junitxml=reports/junit.xml --cov=src --cov-report=xml:reports/coverage.xml --cov-report=term
+      - uses: actions/upload-artifact@v4
+        if: always()                           # keep the report ESPECIALLY when tests failed
+        with:
+          name: test-reports
+          path: reports/
+          retention-days: 30
 
-  bundle-validate:
+  # ---------------------------------------------------------------- 4. BUILD + PACKAGE + ARTIFACT
+  build-and-package:
+    needs: [unit-tests, security]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: databricks/setup-cli@main
-      - run: databricks bundle validate -t dev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-ci.txt
+      - name: Build Python wheel
+        run: python -m build --wheel --outdir dist/
+      - name: Install Databricks CLI (only when workspace credentials are configured)
+        if: ${{ vars.DATABRICKS_VALIDATE == 'true' }}
+        uses: databricks/setup-cli@main
+      - name: Validate Databricks Asset Bundle
+        if: ${{ vars.DATABRICKS_VALIDATE == 'true' }}
+        run: databricks bundle validate -t dev
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}          # OAuth M2M service principal
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      - name: Assemble release package
+        run: |
+          mkdir -p package
+          cp dist/*.whl package/
+          # everything each deploy stage needs, frozen at this commit:
+          tar -czf package/deploy-bundle.tgz databricks.yml resources notebooks src configs
+          tar -czf package/adf.tgz adf
+          tar -czf package/sql.tgz sql
+          tar -czf package/powerbi.tgz powerbi
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "run=${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > package/BUILD_INFO.txt
+          cd package && sha256sum *.whl *.tgz BUILD_INFO.txt > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: northforge-mfg-${{ github.sha }}
+          path: package/
+          retention-days: 90
+
+  # ---------------------------------------------------------------- 5. ALERT ON FAILURE
+  notify-failure:
+    needs: [lint, security, unit-tests, build-and-package]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Teams channel (skipped if the webhook secret is not configured)
+        env:
+          WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then echo "No TEAMS_WEBHOOK_URL secret: GitHub e-mail notification only"; exit 0; fi
+          MSG="CI FAILED on ${GITHUB_REPOSITORY} (${GITHUB_REF_NAME}) by ${GITHUB_ACTOR}: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -sS -X POST -H 'Content-Type: application/json' "$WEBHOOK" -d "{\"text\": \"$MSG\"}"

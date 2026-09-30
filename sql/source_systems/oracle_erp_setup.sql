@@ -1,3 +1,6 @@
+-- sqlfluff:dialect:oracle
+-- sqlfluff:ignore:parsing
+-- ^ admin/DBA script: GRANT/ALTER ROLE/RESOURCE MONITOR forms are valid SQL that sqlfluff's dialect cannot parse yet.
 /* =============================================================================
    SOURCE: Oracle 19c — ERP (schema ERP). Query-based incremental extraction.
 

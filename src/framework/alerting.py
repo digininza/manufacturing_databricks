@@ -39,10 +39,11 @@ def send_alert(ctx: RunContext, severity: str, entity_name: str, message: str, e
     payload = build_alert_payload(ctx, severity, entity_name, message, extra)
     log.error("ALERT %s", json.dumps(payload))
     try:
-        from src.common.notebook_utils import get_secret
+        from src.common.notebook_utils import get_secret, require_https
 
         url = get_secret(ctx.config.get("alerting.secret_scope"), ctx.config.get("alerting.webhook_secret_key"))
-        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
-        urllib.request.urlopen(req, timeout=15)
+        req = urllib.request.Request(require_https(url), data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        # bandit B310 (urlopen scheme): scheme validated by require_https() above
+        urllib.request.urlopen(req, timeout=15)  # nosec B310
     except Exception as exc:  # alerting must never mask the original failure
         log.warning("alert delivery failed (job-level email notification still fires): %s", exc)

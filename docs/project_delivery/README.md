@@ -69,6 +69,8 @@ flowchart LR
 | 12 | [Release, deployment & change management](12_RELEASE_AND_CHANGE.md) | CI/CD, environments, release checklist, CAB, rollback | DevOps / platform engineer | Tech lead | Change Advisory Board (CAB) | Each release |
 | 13 | [Operations handover, runbook & KT](13_OPERATIONS_HANDOVER.md) | Support model, runbooks, alerts, SLAs, knowledge transfer | Data engineering team | L2/L3 support team | Service owner | Go-live / hypercare exit |
 | 14 | [RACI, RAID log & decision log (ADR)](14_RACI_RAID_DECISIONS.md) | Who does what; risks, assumptions, issues and dependencies; why decisions were made | Programme manager + architect | Steering committee | Sponsor | Continuous |
+| 16 | [Risk matrix & risk register](16_RISK_MATRIX.md) + [CSV](raid/RISK_REGISTER.csv) | 5×5 likelihood × impact scoring, heat maps (inherent vs current), 20 scored risks | PM + architect | Weekly RAID review | Steering committee | Continuous (first version at kick-off) |
+| 17 | [RAID log](17_RAID_LOG.md) + [CSV](raid/RAID_LOG.csv) | Risks, assumptions, issues, dependencies, decisions: status, owners, links, weekly process | PM (everyone raises items) | Weekly RAID review | Steering committee | Continuous |
 | 15 | [Team working agreement (Jira, DoR/DoD, doc usage)](15_TEAM_WORKING_AGREEMENT.md) | How every engineer uses these documents to build correctly | Tech lead | Team | Tech lead | Sprint 0 |
 
 The technical reference documents for the **built** solution already sit one level up in `docs/`:

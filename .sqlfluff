@@ -1,0 +1,15 @@
+# SQL lint configuration (sqlfluff). Each sql/ sub-folder overrides the dialect in its own .sqlfluff.
+[sqlfluff]
+dialect = ansi
+templater = placeholder
+max_line_length = 180
+# Rules we enforce (correctness + consistency). Layout/capitalisation rules that would only
+# reformat hand-aligned DDL are excluded — see docs/CI_CD.md for the reasoning.
+rules = core
+# AL03 (alias every expression) is excluded: it only fires on seed INSERT ... SELECT -1, 'UNKNOWN' rows.
+exclude_rules = LT01, LT02, LT05, LT09, LT14, CP02, AM04, ST06, RF04, AL03
+
+[sqlfluff:templater:placeholder]
+# ${catalog} in Databricks DDL is substituted at deploy time (flyway-style variable)
+param_style = flyway_var
+catalog = mfg_ci

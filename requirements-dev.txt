@@ -1,9 +1,12 @@
 # Local/CI development dependencies. The synthetic-data generator and the
 # pure-Python tests need NO Spark/Java. Spark-backed tests are skipped
 # automatically when pyspark or a JDK (11/17) is not available.
+# Project standard is Python 3.11 (CI). Markers keep a local Python 3.9 venv installable.
 -r requirements.txt
-pyspark==3.5.1
+pyspark==3.5.8
 delta-spark==3.2.0
-pytest>=7.4
+pytest==9.0.3; python_version >= "3.10"
+pytest==8.4.2; python_version < "3.10"
+pytest-cov>=5.0
 flake8==7.3.0
 black==25.11.0

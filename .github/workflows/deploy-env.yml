@@ -1,0 +1,74 @@
+# Reusable deployment of ONE environment. Called by cd.yml for dev, test and prod.
+name: deploy-env
+
+on:
+  workflow_call:
+    inputs:
+      environment: {type: string, required: true}
+      ci_run_id: {type: string, required: true}
+      sha: {type: string, required: true}
+      run_smoke_test: {type: boolean, default: false}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}      # <- approval gate + environment-scoped secrets
+    timeout-minutes: 60
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - name: Download the tested artifact from CI (not a rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: northforge-mfg-${{ inputs.sha }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: package
+
+      - name: Verify artifact integrity
+        working-directory: package
+        run: sha256sum -c SHA256SUMS && cat BUILD_INFO.txt
+
+      - name: Unpack
+        run: |
+          mkdir -p release && cd release
+          for f in deploy-bundle adf sql powerbi; do tar -xzf ../package/$f.tgz; done
+
+      - name: Stop ADF triggers (so nothing runs mid-deploy)
+        if: ${{ vars.ADF_DEPLOY == 'true' }}
+        run: echo "az datafactory trigger stop ... (Azure login via azure/login with the env's federated credential)"
+
+      - name: Database migrations — control DB + Snowflake (versioned, idempotent)
+        if: ${{ vars.DB_MIGRATIONS == 'true' }}
+        run: echo "schemachange / flyway apply sql/ for ${{ inputs.environment }}"
+
+      - name: Deploy Databricks jobs + notebooks (Asset Bundle)
+        uses: databricks/setup-cli@main
+      - working-directory: release
+        run: databricks bundle deploy -t ${{ inputs.environment }}
+
+      - name: Deploy ADF (ARM template from the adf/ folder) and restart triggers
+        if: ${{ vars.ADF_DEPLOY == 'true' }}
+        run: echo "npx @microsoft/azure-data-factory-utilities export → az deployment group create (env parameters) → trigger start"
+
+      - name: Smoke test — setup job + one end-to-end batch run, reconciliation must be green
+        if: ${{ inputs.run_smoke_test }}
+        working-directory: release
+        run: |
+          databricks bundle run -t ${{ inputs.environment }} mfg_setup_and_demo_data
+          databricks bundle run -t ${{ inputs.environment }} mfg_batch_pipeline
+
+      - name: Alert on deployment failure
+        if: ${{ failure() }}
+        env:
+          WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          [ -z "$WEBHOOK" ] && exit 0
+          curl -sS -X POST -H 'Content-Type: application/json' "$WEBHOOK" \
+            -d "{\"text\": \"DEPLOY FAILED: ${{ inputs.environment }} (${{ inputs.sha }}) ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"

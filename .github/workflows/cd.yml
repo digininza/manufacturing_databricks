@@ -1,0 +1,62 @@
+# =============================================================================
+# CD — deploys the artifact that CI built and tested. Build ONCE, deploy the SAME bits everywhere.
+#
+#   CI green on main ─► deploy-dev (automatic) ─► deploy-test (approval) ─► deploy-prod (approval + CAB)
+#
+# Approvals are GitHub "Environments" (Settings → Environments → dev/test/prod → required reviewers).
+# Each environment holds its own secrets (Databricks SP, Azure SP, Snowflake key), so a dev
+# credential can never deploy to prod.
+# Guarded by the repository variable DEPLOY_ENABLED=true, so the workflow is a no-op until the
+# cloud credentials exist.
+# =============================================================================
+name: cd
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: "CI run id whose artifact to (re)deploy — e.g. to roll back to an older build"
+        required: true
+
+permissions:
+  contents: read
+  actions: read                         # to download the artifact from the CI run
+
+jobs:
+  resolve:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.r.outputs.run_id }}
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID="${{ github.event.inputs.ci_run_id || github.event.workflow_run.id }}"
+          SHA=$(gh api repos/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID --jq .head_sha)
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  deploy-dev:
+    needs: resolve
+    uses: ./.github/workflows/deploy-env.yml
+    with: {environment: dev, ci_run_id: "${{ needs.resolve.outputs.run_id }}", sha: "${{ needs.resolve.outputs.sha }}", run_smoke_test: true}
+    secrets: inherit
+
+  deploy-test:
+    needs: [resolve, deploy-dev]
+    uses: ./.github/workflows/deploy-env.yml
+    with: {environment: test, ci_run_id: "${{ needs.resolve.outputs.run_id }}", sha: "${{ needs.resolve.outputs.sha }}", run_smoke_test: true}
+    secrets: inherit
+
+  deploy-prod:
+    needs: [resolve, deploy-test]
+    uses: ./.github/workflows/deploy-env.yml
+    with: {environment: prod, ci_run_id: "${{ needs.resolve.outputs.run_id }}", sha: "${{ needs.resolve.outputs.sha }}", run_smoke_test: false}
+    secrets: inherit

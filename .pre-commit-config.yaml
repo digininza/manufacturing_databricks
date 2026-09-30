@@ -1,0 +1,23 @@
+# Same checks as CI, run on the developer's laptop at `git commit` (install once: pip install pre-commit && pre-commit install).
+# Catching a lint error here takes 2 seconds; catching it in CI takes a push + 5 minutes.
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.11.0
+    hooks: [{id: black}]
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks: [{id: flake8}]
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.4.2
+    hooks: [{id: sqlfluff-lint, files: ^sql/}]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks: [{id: gitleaks}]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - {id: check-yaml, args: [--unsafe]}
+      - {id: check-json}
+      - {id: check-merge-conflict}
+      - {id: detect-private-key}
+      - {id: check-added-large-files, args: [--maxkb=2048]}

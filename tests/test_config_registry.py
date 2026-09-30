@@ -54,3 +54,17 @@ def test_registry_and_adf_control_table_describe_the_same_entities(repo_root):
         assert f"'{entity.raw_path}'" in seed, f"{name}: raw_path {entity.raw_path} != control target_folder"
     seeded = set(re.findall(r"\('([a-z_]+)',\s*'(?:SQLSERVER_MES|ORACLE_ERP|CMMS_API|SUPPLIER_FILES)'", seed))
     assert seeded == set(registry), f"control table and registry disagree: {seeded ^ set(registry)}"
+
+
+def test_fq_rejects_non_identifier_table_names():
+    cfg = load_config("dev")
+    with pytest.raises(ValueError, match="invalid SQL identifier"):
+        cfg.fq("gold", "dim_machine; DROP TABLE x")
+
+
+def test_require_https_blocks_other_schemes():
+    from src.common.notebook_utils import require_https
+
+    assert require_https("https://example.com/hook") == "https://example.com/hook"
+    with pytest.raises(ValueError):
+        require_https("file:///etc/passwd")

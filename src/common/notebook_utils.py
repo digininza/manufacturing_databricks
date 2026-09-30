@@ -42,5 +42,12 @@ def get_secret(scope: str, key: str) -> str:
     return dbu.secrets.get(scope=scope, key=key)
 
 
+def require_https(url: str) -> str:
+    """Only https:// may be opened (blocks file:// and custom schemes; bandit B310)."""
+    if not url.lower().startswith("https://"):
+        raise ValueError("refusing to call a non-https URL")
+    return url
+
+
 def new_run_id(prefix: str) -> str:
     return f"{prefix}_{date.today():%Y%m%d}_{uuid.uuid4().hex[:8]}"

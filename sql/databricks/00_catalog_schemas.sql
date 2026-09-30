@@ -1,3 +1,5 @@
+-- sqlfluff:ignore:parsing
+-- ^ admin/DBA script: GRANT/ALTER ROLE/RESOURCE MONITOR forms are valid SQL that sqlfluff's dialect cannot parse yet.
 -- =============================================================================
 -- Unity Catalog setup. ${catalog} is substituted by notebooks/00_setup/00_create_catalog_schemas.py
 -- Storage is reached through EXTERNAL LOCATIONS backed by a STORAGE CREDENTIAL
