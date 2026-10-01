@@ -2,9 +2,12 @@
     "name": "LS_Oracle_ERP",
     "properties": {
         "type": "Oracle",
-        "description": "On-prem Oracle ERP via self-hosted IR. Read-only user; password from Key Vault.",
+        "version": "2.0",
+        "description": "On-prem Oracle ERP via self-hosted IR (Oracle connector v2.0). Read-only user; password from Key Vault.",
         "typeProperties": {
-            "connectionString": "Host=erp-ora01.northforge.local;Port=1521;ServiceName=ERPPROD;User Id=SVC_ADF_ERP;",
+            "server": "erp-ora01.northforge.local:1521/ERPPROD",
+            "authenticationType": "Basic",
+            "username": "SVC_ADF_ERP",
             "password": {
                 "type": "AzureKeyVaultSecret",
                 "store": {

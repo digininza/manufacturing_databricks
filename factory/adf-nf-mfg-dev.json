@@ -1,0 +1,15 @@
+{
+	"name": "adf-nf-mfg-dev",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "7c7ae30c-2d12-4c07-8479-d8d199decee9",
+		"tenantId": "5ebe7693-f7a8-4000-a7bc-0e1cb923b847"
+	}
+}
