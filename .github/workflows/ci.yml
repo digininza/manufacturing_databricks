@@ -76,7 +76,7 @@ jobs:
         run: |
           curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz | tar -xz gitleaks
           ./gitleaks git . --redact --no-banner -v
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: security-reports
@@ -101,7 +101,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: pytest (pure-Python + Spark tests, JUnit + coverage reports)
         run: pytest -rs --junitxml=reports/junit.xml --cov=src --cov-report=xml:reports/coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()                           # keep the report ESPECIALLY when tests failed
         with:
           name: test-reports
@@ -147,7 +147,7 @@ jobs:
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > package/BUILD_INFO.txt
           cd package && sha256sum *.whl *.tgz BUILD_INFO.txt > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: northforge-mfg-${{ github.sha }}
           path: package/
