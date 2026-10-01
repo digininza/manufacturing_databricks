@@ -1,0 +1,28 @@
+{
+    "name": "DS_ADLS_Csv_SupplierMerged",
+    "properties": {
+        "description": "Single merged CSV of today's supplier files: the input of the Power Query cleansing.",
+        "linkedServiceName": {
+            "referenceName": "LS_ADLS_Gen2",
+            "type": "LinkedServiceReference"
+        },
+        "type": "DelimitedText",
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "fileName": "supplier_deliveries_current.csv",
+                "folderPath": "supplier_deliveries/powerquery_input",
+                "fileSystem": "landing"
+            },
+            "columnDelimiter": ",",
+            "escapeChar": "\\",
+            "quoteChar": "\"",
+            "firstRowAsHeader": true,
+            "encodingName": "UTF-8"
+        },
+        "schema": [],
+        "folder": {
+            "name": "PowerQuery"
+        }
+    }
+}

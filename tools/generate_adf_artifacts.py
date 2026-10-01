@@ -1132,4 +1132,336 @@ write(
         },
     },
 )
+
+# =============================================================================== ADF-NATIVE TRANSFORMS
+# Two showcase pipelines that use ADF's own transformation engines (Spark clusters managed by ADF,
+# billed per vCore-hour ONLY while they run). Both read cloud storage: Power Query and data flows
+# cannot reach on-prem SQL Server/Oracle through the self-hosted IR, so extraction stays in PL_10/PL_11.
+
+ADLS_URL = "https://stnfmfgdev.dfs.core.windows.net"
+
+
+def standalone_alert(name, severity, message_expr, depends):
+    return {
+        "name": name,
+        "type": "ExecutePipeline",
+        "dependsOn": depends,
+        "userProperties": [],
+        "typeProperties": {
+            "pipeline": {"referenceName": "PL_90_Send_Alert", "type": "PipelineReference"},
+            "waitOnCompletion": True,
+            "parameters": {
+                "severity": severity,
+                "pipeline_name": E("@pipeline().Pipeline"),
+                "entity_name": "ADF_NATIVE_TRANSFORM",
+                "message": E(message_expr),
+                "adf_run_id": E("@pipeline().RunId"),
+            },
+        },
+    }
+
+
+def fail(name, guarded):
+    return {
+        "name": name,
+        "type": "Fail",
+        "dependsOn": [dep(f"Alert_{guarded}", "Completed")],
+        "userProperties": [],
+        "typeProperties": {"message": E(f"@activity('{guarded}').error.message"), "errorCode": "ADF_TRANSFORM_FAILED"},
+    }
+
+
+# ---- fixed (non-parameterised) datasets: Power Query does not support dataset parameters
+write(
+    "dataset",
+    "DS_ADLS_Csv_SupplierMerged",
+    {
+        "description": "Single merged CSV of today's supplier files: the input of the Power Query cleansing.",
+        "linkedServiceName": ls_ref("LS_ADLS_Gen2"),
+        "type": "DelimitedText",
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "fileName": "supplier_deliveries_current.csv",
+                "folderPath": "supplier_deliveries/powerquery_input",
+                "fileSystem": "landing",
+            },
+            "columnDelimiter": ",",
+            "escapeChar": "\\",
+            "quoteChar": '"',
+            "firstRowAsHeader": True,
+            "encodingName": "UTF-8",
+        },
+        "schema": [],
+        "folder": {"name": "PowerQuery"},
+    },
+)
+write(
+    "dataset",
+    "DS_ADLS_Parquet_SupplierClean",
+    {
+        "description": "Output of the Power Query cleansing (parquet folder, overwritten each run).",
+        "linkedServiceName": ls_ref("LS_ADLS_Gen2"),
+        "type": "Parquet",
+        "typeProperties": {
+            "location": {"type": "AzureBlobFSLocation", "folderPath": "supplier_files/delivery_powerquery", "fileSystem": "raw"},
+            "compressionCodec": "snappy",
+        },
+        "schema": [],
+        "folder": {"name": "PowerQuery"},
+    },
+)
+
+# ---- Power Query (wrangling data flow): business-readable cleansing steps in M
+PQ_SOURCE = "SupplierDeliveries"
+PQ_M_SCRIPT = (
+    "section Section1;\r\n"
+    f'shared {PQ_SOURCE} = let AdfDoc = AzureStorage.DataLakeContents("{ADLS_URL}/landing/supplier_deliveries/powerquery_input/supplier_deliveries_current.csv"), '
+    'Csv = Csv.Document(AdfDoc, [Delimiter = ",", Encoding = TextEncoding.Utf8, QuoteStyle = QuoteStyle.Csv]), '
+    "PromotedHeaders = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]) in PromotedHeaders;\r\n"
+    "shared UserQuery = let\r\n"
+    f"    Source = {PQ_SOURCE},\r\n"
+    "    // 1. trim stray spaces on every text key\r\n"
+    '    Trimmed = Table.TransformColumns(Source, {{"delivery_id", Text.Trim}, {"supplier_id", Text.Trim}, {"supplier_name", Text.Trim}, '
+    '{"material_code", Text.Trim}, {"plant_id", Text.Trim}, {"lot_number", Text.Trim}}),\r\n'
+    "    // 2. standardise codes to upper case, names to proper case\r\n"
+    '    Uppercased = Table.TransformColumns(Trimmed, {{"delivery_id", Text.Upper}, {"supplier_id", Text.Upper}, {"material_code", Text.Upper}, '
+    '{"plant_id", Text.Upper}, {"lot_number", Text.Upper}}),\r\n'
+    '    ProperNames = Table.TransformColumns(Uppercased, {{"supplier_name", Text.Proper}}),\r\n'
+    "    // 3. data types\r\n"
+    '    Typed = Table.TransformColumnTypes(ProperNames, {{"delivery_date", type date}, {"delivered_qty", Int64.Type}, {"rejected_qty", Int64.Type}}),\r\n'
+    "    // 4. business rules: key present, quantities valid\r\n"
+    '    HasKey = Table.SelectRows(Typed, each [delivery_id] <> null and [delivery_id] <> ""),\r\n'
+    "    ValidQty = Table.SelectRows(HasKey, each [delivered_qty] > 0 and [rejected_qty] >= 0 and [rejected_qty] <= [delivered_qty]),\r\n"
+    "    // 5. suppliers re-send lines: one row per delivery_id\r\n"
+    '    Deduped = Table.Distinct(ValidQty, {"delivery_id"}),\r\n'
+    "    // 6. derived measure\r\n"
+    '    WithAccepted = Table.AddColumn(Deduped, "accepted_qty", each [delivered_qty] - [rejected_qty], Int64.Type)\r\n'
+    "in\r\n"
+    "    WithAccepted;\r\n"
+)
+write(
+    "dataflow",
+    "PQ_Supplier_Delivery_Cleansing",
+    {
+        "type": "WranglingDataFlow",
+        "description": "Power Query (M) cleansing of supplier delivery files: trim, standardise case, types, validity rules, dedup, accepted_qty. "
+        "Editable by analysts in the Power Query editor; ADF translates the M steps to Spark at run time.",
+        "folder": {"name": "PowerQuery"},
+        "typeProperties": {
+            "sources": [
+                {
+                    "name": PQ_SOURCE,
+                    "script": f"source(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> {PQ_SOURCE}",
+                    "dataset": ds_ref("DS_ADLS_Csv_SupplierMerged"),
+                }
+            ],
+            "script": PQ_M_SCRIPT,
+            "documentLocale": "en-us",
+        },
+    },
+)
+
+write(
+    "pipeline",
+    "PL_14_PowerQuery_Supplier_Cleansing",
+    {
+        "description": "Merge today's supplier CSVs into one file -> Power Query cleansing (M) -> parquet in raw. "
+        "Self-service alternative to the code path (PL_13 + Databricks silver): analysts own the cleansing rules.",
+        "activities": [
+            {
+                "name": "Copy_Merge_Supplier_Files",
+                "description": "Power Query reads one file, so all incoming supplier CSVs are merged into supplier_deliveries_current.csv first.",
+                "type": "Copy",
+                "dependsOn": [],
+                "policy": policy(**RETRY, timeout="0.01:00:00"),
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": False,
+                            "wildcardFolderPath": "supplier_deliveries/incoming",
+                            "wildcardFileName": "*_deliveries_*.csv",
+                            "enablePartitionDiscovery": False,
+                        },
+                        "formatSettings": {"type": "DelimitedTextReadSettings"},
+                    },
+                    "sink": {
+                        "type": "DelimitedTextSink",
+                        "storeSettings": {"type": "AzureBlobFSWriteSettings", "copyBehavior": "MergeFiles"},
+                        "formatSettings": {"type": "DelimitedTextWriteSettings", "quoteAllText": True, "fileExtension": ".csv"},
+                    },
+                    "enableStaging": False,
+                },
+                "inputs": [ds_ref("DS_ADLS_Csv", {"container": "landing", "folder": "supplier_deliveries/incoming"})],
+                "outputs": [ds_ref("DS_ADLS_Csv_SupplierMerged")],
+            },
+            {
+                "name": "Run_PowerQuery_Cleansing",
+                "type": "ExecuteWranglingDataflow",
+                "dependsOn": [dep("Copy_Merge_Supplier_Files")],
+                "policy": policy(retry=1, interval=120, timeout="0.02:00:00"),
+                "userProperties": [],
+                "typeProperties": {
+                    "dataFlow": {"referenceName": "PQ_Supplier_Delivery_Cleansing", "type": "DataFlowReference"},
+                    "compute": {"coreCount": 8, "computeType": "General"},
+                    "traceLevel": "Fine",
+                    "queries": [
+                        {
+                            "queryName": "UserQuery",
+                            "dataflowSinks": [
+                                {
+                                    "name": "SupplierCleanSink",
+                                    "script": "sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tformat: 'parquet',\n\ttruncate: true,\n\t"
+                                    "skipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SupplierCleanSink",
+                                    "dataset": ds_ref("DS_ADLS_Parquet_SupplierClean"),
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            standalone_alert(
+                "Alert_Copy_Merge_Supplier_Files", "HIGH", "@activity('Copy_Merge_Supplier_Files').error.message", [dep("Copy_Merge_Supplier_Files", "Failed")]
+            ),
+            fail("Fail_Copy_Merge_Supplier_Files", "Copy_Merge_Supplier_Files"),
+            standalone_alert(
+                "Alert_Run_PowerQuery_Cleansing", "HIGH", "@activity('Run_PowerQuery_Cleansing').error.message", [dep("Run_PowerQuery_Cleansing", "Failed")]
+            ),
+            fail("Fail_Run_PowerQuery_Cleansing", "Run_PowerQuery_Cleansing"),
+        ],
+        "folder": {"name": "15_ADF_Native_Transform"},
+        "annotations": ["power-query"],
+    },
+)
+
+# ---- Mapping data flow: apply landed SQL Server CDC changes (latest per key, delete/upsert) into Delta
+CDC_COLS = [
+    ("cdc_start_lsn", "string"),
+    ("cdc_seqval", "string"),
+    ("cdc_operation", "integer"),
+    ("cdc_update_mask", "string"),
+    ("cdc_commit_ts", "timestamp"),
+    ("production_log_id", "long"),
+    ("order_id", "string"),
+    ("machine_id", "string"),
+    ("product_id", "string"),
+    ("shift_code", "string"),
+    ("start_ts", "timestamp"),
+    ("end_ts", "timestamp"),
+    ("units_produced", "integer"),
+    ("units_scrapped", "integer"),
+    ("operator_id", "string"),
+    ("modified_at", "timestamp"),
+]
+KEEP = [c for c, _ in CDC_COLS if c not in ("cdc_seqval", "cdc_update_mask")]
+DF_SCRIPT = (
+    [
+        "parameters{",
+        "     cdc_folder as string ('sqlserver_mes/production_log')",
+        "}",
+        "source(output(",
+    ]
+    + [f"          {c} as {t}{',' if i < len(CDC_COLS) - 1 else ''}" for i, (c, t) in enumerate(CDC_COLS)]
+    + [
+        "     ),",
+        "     allowSchemaDrift: true,",
+        "     validateSchema: false,",
+        "     ignoreNoFilesFound: true,",
+        "     format: 'parquet',",
+        "     fileSystem: 'raw',",
+        "     wildcardPaths:[(concat($cdc_folder, '/**/*.parquet'))]) ~> CdcChanges",
+        "CdcChanges window(over(production_log_id),",
+        "     desc(cdc_start_lsn, true),",
+        "     desc(cdc_seqval, true),",
+        "     version_rank = rowNumber()) ~> RankVersions",
+        "RankVersions filter(version_rank == 1) ~> LatestPerKey",
+        "LatestPerKey alterRow(deleteIf(cdc_operation == 1),",
+        "     upsertIf(cdc_operation != 1)) ~> MarkRowAction",
+        "MarkRowAction select(mapColumn(",
+    ]
+    + [f"          {c}{',' if i < len(KEEP) - 1 else ''}" for i, c in enumerate(KEEP)]
+    + [
+        "     ),",
+        "     skipDuplicateMapInputs: true,",
+        "     skipDuplicateMapOutputs: true) ~> FinalColumns",
+        "FinalColumns sink(allowSchemaDrift: true,",
+        "     validateSchema: false,",
+        "     format: 'delta',",
+        "     fileSystem: 'curated',",
+        "     folderPath: 'adf_cdc/mes_production_log',",
+        "     mergeSchema: false,",
+        "     autoCompact: true,",
+        "     optimizedWrite: true,",
+        "     vacuum: 0,",
+        "     deletable: true,",
+        "     insertable: true,",
+        "     updateable: false,",
+        "     upsertable: true,",
+        "     keys:['production_log_id'],",
+        "     umask: 0022,",
+        "     preCommands: [],",
+        "     postCommands: [],",
+        "     skipDuplicateMapInputs: true,",
+        "     skipDuplicateMapOutputs: true) ~> DeltaCurated",
+    ]
+)
+write(
+    "dataflow",
+    "DF_MES_ProductionLog_CDC_Apply",
+    {
+        "type": "MappingDataFlow",
+        "description": "ADF-native CDC apply: reads the CDC rows PL_10 landed for one run (ops 1/2/4), keeps the LATEST version per "
+        "production_log_id (window: lsn desc, seqval desc), marks deletes (op 1) and upserts (op 2/4) with Alter Row, "
+        "and MERGEs into a Delta table in the curated container. Alternative to the Databricks silver merge.",
+        "folder": {"name": "CDC"},
+        "typeProperties": {
+            "sources": [{"linkedService": ls_ref("LS_ADLS_Gen2"), "name": "CdcChanges"}],
+            "sinks": [{"linkedService": ls_ref("LS_ADLS_Gen2"), "name": "DeltaCurated"}],
+            "transformations": [{"name": "RankVersions"}, {"name": "LatestPerKey"}, {"name": "MarkRowAction"}, {"name": "FinalColumns"}],
+            "scriptLines": DF_SCRIPT,
+        },
+    },
+)
+
+write(
+    "pipeline",
+    "PL_15_CDC_Apply_DataFlow",
+    {
+        "description": "Applies ONE landed CDC run (raw/sqlserver_mes/production_log/load_date=.../run_id=...) to the curated Delta table "
+        "via a mapping data flow. Run runs in order (the hourly tumbling window guarantees it), because Alter Row upsert has "
+        "no sequence guard against an older replay (the Databricks silver merge does).",
+        "activities": [
+            {
+                "name": "Apply_CDC_To_Delta",
+                "type": "ExecuteDataFlow",
+                "dependsOn": [],
+                "policy": policy(retry=1, interval=120, timeout="0.02:00:00"),
+                "userProperties": [],
+                "typeProperties": {
+                    "dataflow": {
+                        "referenceName": "DF_MES_ProductionLog_CDC_Apply",
+                        "type": "DataFlowReference",
+                        "parameters": {"cdc_folder": {"value": "'@{pipeline().parameters.run_path}'", "type": "Expression"}},
+                    },
+                    "compute": {"coreCount": 8, "computeType": "General"},
+                    "traceLevel": "Fine",
+                },
+            },
+            standalone_alert("Alert_Apply_CDC_To_Delta", "HIGH", "@activity('Apply_CDC_To_Delta').error.message", [dep("Apply_CDC_To_Delta", "Failed")]),
+            fail("Fail_Apply_CDC_To_Delta", "Apply_CDC_To_Delta"),
+        ],
+        "parameters": {
+            "run_path": {
+                "type": "string",
+                "defaultValue": "sqlserver_mes/production_log/load_date=2026-09-25/run_id=mes_production_log_20260925_01",
+            }
+        },
+        "folder": {"name": "15_ADF_Native_Transform"},
+        "annotations": ["cdc", "data-flow"],
+    },
+)
+
 print("ADF artifacts written")

@@ -1,0 +1,230 @@
+{
+    "name": "PL_14_PowerQuery_Supplier_Cleansing",
+    "properties": {
+        "description": "Merge today's supplier CSVs into one file -> Power Query cleansing (M) -> parquet in raw. Self-service alternative to the code path (PL_13 + Databricks silver): analysts own the cleansing rules.",
+        "activities": [
+            {
+                "name": "Copy_Merge_Supplier_Files",
+                "description": "Power Query reads one file, so all incoming supplier CSVs are merged into supplier_deliveries_current.csv first.",
+                "type": "Copy",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.01:00:00",
+                    "retry": 3,
+                    "retryIntervalInSeconds": 120,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": false,
+                            "wildcardFolderPath": "supplier_deliveries/incoming",
+                            "wildcardFileName": "*_deliveries_*.csv",
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "DelimitedTextSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings",
+                            "copyBehavior": "MergeFiles"
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextWriteSettings",
+                            "quoteAllText": true,
+                            "fileExtension": ".csv"
+                        }
+                    },
+                    "enableStaging": false
+                },
+                "inputs": [
+                    {
+                        "referenceName": "DS_ADLS_Csv",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "container": "landing",
+                            "folder": "supplier_deliveries/incoming"
+                        }
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DS_ADLS_Csv_SupplierMerged",
+                        "type": "DatasetReference"
+                    }
+                ]
+            },
+            {
+                "name": "Run_PowerQuery_Cleansing",
+                "type": "ExecuteWranglingDataflow",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Merge_Supplier_Files",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.02:00:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 120,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataFlow": {
+                        "referenceName": "PQ_Supplier_Delivery_Cleansing",
+                        "type": "DataFlowReference"
+                    },
+                    "compute": {
+                        "coreCount": 8,
+                        "computeType": "General"
+                    },
+                    "traceLevel": "Fine",
+                    "queries": [
+                        {
+                            "queryName": "UserQuery",
+                            "dataflowSinks": [
+                                {
+                                    "name": "SupplierCleanSink",
+                                    "script": "sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tformat: 'parquet',\n\ttruncate: true,\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SupplierCleanSink",
+                                    "dataset": {
+                                        "referenceName": "DS_ADLS_Parquet_SupplierClean",
+                                        "type": "DatasetReference"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Alert_Copy_Merge_Supplier_Files",
+                "type": "ExecutePipeline",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Merge_Supplier_Files",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "pipeline": {
+                        "referenceName": "PL_90_Send_Alert",
+                        "type": "PipelineReference"
+                    },
+                    "waitOnCompletion": true,
+                    "parameters": {
+                        "severity": "HIGH",
+                        "pipeline_name": {
+                            "value": "@pipeline().Pipeline",
+                            "type": "Expression"
+                        },
+                        "entity_name": "ADF_NATIVE_TRANSFORM",
+                        "message": {
+                            "value": "@activity('Copy_Merge_Supplier_Files').error.message",
+                            "type": "Expression"
+                        },
+                        "adf_run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Fail_Copy_Merge_Supplier_Files",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Alert_Copy_Merge_Supplier_Files",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": {
+                        "value": "@activity('Copy_Merge_Supplier_Files').error.message",
+                        "type": "Expression"
+                    },
+                    "errorCode": "ADF_TRANSFORM_FAILED"
+                }
+            },
+            {
+                "name": "Alert_Run_PowerQuery_Cleansing",
+                "type": "ExecutePipeline",
+                "dependsOn": [
+                    {
+                        "activity": "Run_PowerQuery_Cleansing",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "pipeline": {
+                        "referenceName": "PL_90_Send_Alert",
+                        "type": "PipelineReference"
+                    },
+                    "waitOnCompletion": true,
+                    "parameters": {
+                        "severity": "HIGH",
+                        "pipeline_name": {
+                            "value": "@pipeline().Pipeline",
+                            "type": "Expression"
+                        },
+                        "entity_name": "ADF_NATIVE_TRANSFORM",
+                        "message": {
+                            "value": "@activity('Run_PowerQuery_Cleansing').error.message",
+                            "type": "Expression"
+                        },
+                        "adf_run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Fail_Run_PowerQuery_Cleansing",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Alert_Run_PowerQuery_Cleansing",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": {
+                        "value": "@activity('Run_PowerQuery_Cleansing').error.message",
+                        "type": "Expression"
+                    },
+                    "errorCode": "ADF_TRANSFORM_FAILED"
+                }
+            }
+        ],
+        "folder": {
+            "name": "15_ADF_Native_Transform"
+        },
+        "annotations": [
+            "power-query"
+        ]
+    }
+}

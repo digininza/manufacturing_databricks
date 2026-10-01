@@ -11,6 +11,7 @@ KINDS = {
     "dataset": "DatasetReference",
     "pipeline": "PipelineReference",
     "integrationRuntime": "IntegrationRuntimeReference",
+    "dataflow": "DataFlowReference",
 }
 
 
@@ -18,7 +19,7 @@ KINDS = {
 def adf(repo_root):
     root = repo_root / "adf"
     out = {}
-    for folder in ("factory", "integrationRuntime", "linkedService", "dataset", "pipeline", "trigger"):
+    for folder in ("factory", "integrationRuntime", "linkedService", "dataset", "pipeline", "trigger", "dataflow"):
         out[folder] = {p.stem: json.loads(p.read_text()) for p in (root / folder).glob("*.json")}
     return out
 
@@ -111,3 +112,28 @@ def test_watermark_only_advanced_after_validation(adf):
             current = acts[current]["dependsOn"][0]["activity"]
             chain.append(current)
         assert "Validate_Counts" in chain and "Copy_To_Staging" in chain, f"{name}: watermark not gated by validation ({chain})"
+
+
+def test_cdc_data_flow_keeps_latest_version_and_applies_deletes(adf):
+    script = "\n".join(adf["dataflow"]["DF_MES_ProductionLog_CDC_Apply"]["properties"]["typeProperties"]["scriptLines"])
+    assert "window(over(production_log_id)" in script and "desc(cdc_start_lsn, true)" in script  # latest per key
+    assert "filter(version_rank == 1)" in script
+    assert "deleteIf(cdc_operation == 1)" in script and "upsertIf(cdc_operation != 1)" in script
+    assert "keys:['production_log_id']" in script
+
+
+def test_data_flow_transformations_declared_in_script(adf):
+    """Every source/sink/transformation listed in the JSON must exist as a ~> step in the script (ADF rejects mismatches)."""
+    for name, df in adf["dataflow"].items():
+        tp = df["properties"]["typeProperties"]
+        script = "\n".join(tp["scriptLines"]) if "scriptLines" in tp else "\n".join(s["script"] for s in tp["sources"])
+        for section in ("sources", "sinks", "transformations"):
+            for step in tp.get(section, []):
+                assert f"~> {step['name']}" in script, f"{name}: {step['name']} missing from script"
+
+
+def test_power_query_uses_only_fixed_datasets(adf):
+    """Power Query (wrangling data flows) does not support parameterised datasets."""
+    for src in adf["dataflow"]["PQ_Supplier_Delivery_Cleansing"]["properties"]["typeProperties"]["sources"]:
+        ds = adf["dataset"][src["dataset"]["referenceName"]]["properties"]
+        assert not ds.get("parameters"), src["dataset"]["referenceName"]

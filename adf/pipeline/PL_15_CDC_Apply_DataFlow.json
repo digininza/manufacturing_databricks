@@ -1,0 +1,107 @@
+{
+    "name": "PL_15_CDC_Apply_DataFlow",
+    "properties": {
+        "description": "Applies ONE landed CDC run (raw/sqlserver_mes/production_log/load_date=.../run_id=...) to the curated Delta table via a mapping data flow. Run runs in order (the hourly tumbling window guarantees it), because Alter Row upsert has no sequence guard against an older replay (the Databricks silver merge does).",
+        "activities": [
+            {
+                "name": "Apply_CDC_To_Delta",
+                "type": "ExecuteDataFlow",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.02:00:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 120,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataflow": {
+                        "referenceName": "DF_MES_ProductionLog_CDC_Apply",
+                        "type": "DataFlowReference",
+                        "parameters": {
+                            "cdc_folder": {
+                                "value": "'@{pipeline().parameters.run_path}'",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "compute": {
+                        "coreCount": 8,
+                        "computeType": "General"
+                    },
+                    "traceLevel": "Fine"
+                }
+            },
+            {
+                "name": "Alert_Apply_CDC_To_Delta",
+                "type": "ExecutePipeline",
+                "dependsOn": [
+                    {
+                        "activity": "Apply_CDC_To_Delta",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "pipeline": {
+                        "referenceName": "PL_90_Send_Alert",
+                        "type": "PipelineReference"
+                    },
+                    "waitOnCompletion": true,
+                    "parameters": {
+                        "severity": "HIGH",
+                        "pipeline_name": {
+                            "value": "@pipeline().Pipeline",
+                            "type": "Expression"
+                        },
+                        "entity_name": "ADF_NATIVE_TRANSFORM",
+                        "message": {
+                            "value": "@activity('Apply_CDC_To_Delta').error.message",
+                            "type": "Expression"
+                        },
+                        "adf_run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Fail_Apply_CDC_To_Delta",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Alert_Apply_CDC_To_Delta",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": {
+                        "value": "@activity('Apply_CDC_To_Delta').error.message",
+                        "type": "Expression"
+                    },
+                    "errorCode": "ADF_TRANSFORM_FAILED"
+                }
+            }
+        ],
+        "parameters": {
+            "run_path": {
+                "type": "string",
+                "defaultValue": "sqlserver_mes/production_log/load_date=2026-09-25/run_id=mes_production_log_20260925_01"
+            }
+        },
+        "folder": {
+            "name": "15_ADF_Native_Transform"
+        },
+        "annotations": [
+            "cdc",
+            "data-flow"
+        ]
+    }
+}

@@ -1,0 +1,24 @@
+{
+    "name": "PQ_Supplier_Delivery_Cleansing",
+    "properties": {
+        "type": "WranglingDataFlow",
+        "description": "Power Query (M) cleansing of supplier delivery files: trim, standardise case, types, validity rules, dedup, accepted_qty. Editable by analysts in the Power Query editor; ADF translates the M steps to Spark at run time.",
+        "folder": {
+            "name": "PowerQuery"
+        },
+        "typeProperties": {
+            "sources": [
+                {
+                    "name": "SupplierDeliveries",
+                    "script": "source(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> SupplierDeliveries",
+                    "dataset": {
+                        "referenceName": "DS_ADLS_Csv_SupplierMerged",
+                        "type": "DatasetReference"
+                    }
+                }
+            ],
+            "script": "section Section1;\r\nshared SupplierDeliveries = let AdfDoc = AzureStorage.DataLakeContents(\"https://stnfmfgdev.dfs.core.windows.net/landing/supplier_deliveries/powerquery_input/supplier_deliveries_current.csv\"), Csv = Csv.Document(AdfDoc, [Delimiter = \",\", Encoding = TextEncoding.Utf8, QuoteStyle = QuoteStyle.Csv]), PromotedHeaders = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]) in PromotedHeaders;\r\nshared UserQuery = let\r\n    Source = SupplierDeliveries,\r\n    // 1. trim stray spaces on every text key\r\n    Trimmed = Table.TransformColumns(Source, {{\"delivery_id\", Text.Trim}, {\"supplier_id\", Text.Trim}, {\"supplier_name\", Text.Trim}, {\"material_code\", Text.Trim}, {\"plant_id\", Text.Trim}, {\"lot_number\", Text.Trim}}),\r\n    // 2. standardise codes to upper case, names to proper case\r\n    Uppercased = Table.TransformColumns(Trimmed, {{\"delivery_id\", Text.Upper}, {\"supplier_id\", Text.Upper}, {\"material_code\", Text.Upper}, {\"plant_id\", Text.Upper}, {\"lot_number\", Text.Upper}}),\r\n    ProperNames = Table.TransformColumns(Uppercased, {{\"supplier_name\", Text.Proper}}),\r\n    // 3. data types\r\n    Typed = Table.TransformColumnTypes(ProperNames, {{\"delivery_date\", type date}, {\"delivered_qty\", Int64.Type}, {\"rejected_qty\", Int64.Type}}),\r\n    // 4. business rules: key present, quantities valid\r\n    HasKey = Table.SelectRows(Typed, each [delivery_id] <> null and [delivery_id] <> \"\"),\r\n    ValidQty = Table.SelectRows(HasKey, each [delivered_qty] > 0 and [rejected_qty] >= 0 and [rejected_qty] <= [delivered_qty]),\r\n    // 5. suppliers re-send lines: one row per delivery_id\r\n    Deduped = Table.Distinct(ValidQty, {\"delivery_id\"}),\r\n    // 6. derived measure\r\n    WithAccepted = Table.AddColumn(Deduped, \"accepted_qty\", each [delivered_qty] - [rejected_qty], Int64.Type)\r\nin\r\n    WithAccepted;\r\n",
+            "documentLocale": "en-us"
+        }
+    }
+}

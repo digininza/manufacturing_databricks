@@ -145,3 +145,56 @@ GRANT EXECUTE ON SCHEMA::ctl TO [adf-nf-mfg-dev];
 **CI/CD.** Build the ARM template with the `@microsoft/azure-data-factory-utilities` npm package in the pipeline. Deploy it to test and prod with environment-specific ARM parameters: Key Vault URL, storage URL, SQL server, and global parameters. Stop triggers before deploying and start them after.
 
 The JSON is also reproducible from `tools/generate_adf_artifacts.py`.
+
+## 6. ADF-native transformations: Power Query and the CDC data flow
+
+Two extra pipelines show the transformation engines **inside** ADF. Both run on ADF-managed Spark
+(Azure IR, General compute, 8 cores), which is **billed only while they run**. Opening, editing or **Validating**
+them is free. *Data flow debug* starts a billed cluster, so leave it off unless you mean to test.
+
+### PL_14_PowerQuery_Supplier_Cleansing (Power Query)
+```
+landing/supplier_deliveries/incoming/*.csv
+   └─ Copy_Merge_Supplier_Files (MergeFiles) ─► landing/.../powerquery_input/supplier_deliveries_current.csv
+         └─ Run_PowerQuery_Cleansing (PQ_Supplier_Delivery_Cleansing) ─► raw/supplier_files/delivery_powerquery/ (parquet)
+```
+| M step | What it does |
+|---|---|
+| `Trimmed` | `Text.Trim` on every text key |
+| `Uppercased` / `ProperNames` | Codes to upper case, supplier names to proper case |
+| `Typed` | `delivery_date` to date, quantities to Int64 |
+| `HasKey` / `ValidQty` | Drop rows without a key, or with impossible quantities |
+| `Deduped` | One row per `delivery_id` (suppliers re-send lines) |
+| `WithAccepted` | `accepted_qty = delivered - rejected` |
+
+**When to use Power Query:**
+- Simple, business-owned cleansing that analysts want to read and change themselves, in the same editor they know from Excel and Power BI.
+- ADF translates the M steps to Spark when the pipeline runs.
+
+**Limits we designed around:**
+- Cloud sources only: no self-hosted IR, so it can't read on-prem SQL Server or Oracle.
+- No dataset parameters, so fixed datasets plus a merge step.
+- One output; it can't split good and bad rows. Invalid rows are *dropped*, not quarantined.
+
+That last limit is why the production path stays **PL_13 → Databricks silver**: its DQ engine quarantines and reconciles every row.
+
+### PL_15_CDC_Apply_DataFlow (mapping data flow: CDC apply)
+```
+raw/sqlserver_mes/production_log/load_date=…/run_id=…/*.parquet   (CDC rows landed by PL_10: ops 1/2/4)
+   └─ DF_MES_ProductionLog_CDC_Apply
+        CdcChanges ─► RankVersions (window: per production_log_id, lsn desc, seqval desc)
+                   ─► LatestPerKey (rank = 1)
+                   ─► MarkRowAction (Alter Row: deleteIf op = 1, upsertIf op ≠ 1)
+                   ─► FinalColumns ─► DeltaCurated (Delta MERGE on production_log_id, curated/adf_cdc/mes_production_log)
+```
+
+**Why it exists:**
+- It shows CDC applied **with ADF only**: no Databricks needed for a simple replica.
+- In interviews it answers "how would you apply CDC in ADF?".
+
+**Why the platform still uses Databricks for silver:**
+- ADF's Alter Row upsert has **no sequence guard**: replaying an older run would overwrite newer data. So PL_15 must process runs strictly in order, one run folder per execution.
+- Data flows can't reach on-prem SQL Server (extraction stays in PL_10 via the self-hosted IR).
+- There's no DQ quarantine or per-batch reconciliation framework.
+
+**ADF's own "Change Data Capture" resource** (top-level, under Author) is the third option. It needs a source that the Azure IR or a managed VNet can reach. On-prem MES via the self-hosted IR isn't one of them, which is why CDC extraction here is the Copy-based `PL_10`.

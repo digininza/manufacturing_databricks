@@ -1,0 +1,117 @@
+{
+    "name": "DF_MES_ProductionLog_CDC_Apply",
+    "properties": {
+        "type": "MappingDataFlow",
+        "description": "ADF-native CDC apply: reads the CDC rows PL_10 landed for one run (ops 1/2/4), keeps the LATEST version per production_log_id (window: lsn desc, seqval desc), marks deletes (op 1) and upserts (op 2/4) with Alter Row, and MERGEs into a Delta table in the curated container. Alternative to the Databricks silver merge.",
+        "folder": {
+            "name": "CDC"
+        },
+        "typeProperties": {
+            "sources": [
+                {
+                    "linkedService": {
+                        "referenceName": "LS_ADLS_Gen2",
+                        "type": "LinkedServiceReference"
+                    },
+                    "name": "CdcChanges"
+                }
+            ],
+            "sinks": [
+                {
+                    "linkedService": {
+                        "referenceName": "LS_ADLS_Gen2",
+                        "type": "LinkedServiceReference"
+                    },
+                    "name": "DeltaCurated"
+                }
+            ],
+            "transformations": [
+                {
+                    "name": "RankVersions"
+                },
+                {
+                    "name": "LatestPerKey"
+                },
+                {
+                    "name": "MarkRowAction"
+                },
+                {
+                    "name": "FinalColumns"
+                }
+            ],
+            "scriptLines": [
+                "parameters{",
+                "     cdc_folder as string ('sqlserver_mes/production_log')",
+                "}",
+                "source(output(",
+                "          cdc_start_lsn as string,",
+                "          cdc_seqval as string,",
+                "          cdc_operation as integer,",
+                "          cdc_update_mask as string,",
+                "          cdc_commit_ts as timestamp,",
+                "          production_log_id as long,",
+                "          order_id as string,",
+                "          machine_id as string,",
+                "          product_id as string,",
+                "          shift_code as string,",
+                "          start_ts as timestamp,",
+                "          end_ts as timestamp,",
+                "          units_produced as integer,",
+                "          units_scrapped as integer,",
+                "          operator_id as string,",
+                "          modified_at as timestamp",
+                "     ),",
+                "     allowSchemaDrift: true,",
+                "     validateSchema: false,",
+                "     ignoreNoFilesFound: true,",
+                "     format: 'parquet',",
+                "     fileSystem: 'raw',",
+                "     wildcardPaths:[(concat($cdc_folder, '/**/*.parquet'))]) ~> CdcChanges",
+                "CdcChanges window(over(production_log_id),",
+                "     desc(cdc_start_lsn, true),",
+                "     desc(cdc_seqval, true),",
+                "     version_rank = rowNumber()) ~> RankVersions",
+                "RankVersions filter(version_rank == 1) ~> LatestPerKey",
+                "LatestPerKey alterRow(deleteIf(cdc_operation == 1),",
+                "     upsertIf(cdc_operation != 1)) ~> MarkRowAction",
+                "MarkRowAction select(mapColumn(",
+                "          cdc_start_lsn,",
+                "          cdc_operation,",
+                "          cdc_commit_ts,",
+                "          production_log_id,",
+                "          order_id,",
+                "          machine_id,",
+                "          product_id,",
+                "          shift_code,",
+                "          start_ts,",
+                "          end_ts,",
+                "          units_produced,",
+                "          units_scrapped,",
+                "          operator_id,",
+                "          modified_at",
+                "     ),",
+                "     skipDuplicateMapInputs: true,",
+                "     skipDuplicateMapOutputs: true) ~> FinalColumns",
+                "FinalColumns sink(allowSchemaDrift: true,",
+                "     validateSchema: false,",
+                "     format: 'delta',",
+                "     fileSystem: 'curated',",
+                "     folderPath: 'adf_cdc/mes_production_log',",
+                "     mergeSchema: false,",
+                "     autoCompact: true,",
+                "     optimizedWrite: true,",
+                "     vacuum: 0,",
+                "     deletable: true,",
+                "     insertable: true,",
+                "     updateable: false,",
+                "     upsertable: true,",
+                "     keys:['production_log_id'],",
+                "     umask: 0022,",
+                "     preCommands: [],",
+                "     postCommands: [],",
+                "     skipDuplicateMapInputs: true,",
+                "     skipDuplicateMapOutputs: true) ~> DeltaCurated"
+            ]
+        }
+    }
+}

@@ -1,0 +1,23 @@
+{
+    "name": "DS_ADLS_Parquet_SupplierClean",
+    "properties": {
+        "description": "Output of the Power Query cleansing (parquet folder, overwritten each run).",
+        "linkedServiceName": {
+            "referenceName": "LS_ADLS_Gen2",
+            "type": "LinkedServiceReference"
+        },
+        "type": "Parquet",
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "folderPath": "supplier_files/delivery_powerquery",
+                "fileSystem": "raw"
+            },
+            "compressionCodec": "snappy"
+        },
+        "schema": [],
+        "folder": {
+            "name": "PowerQuery"
+        }
+    }
+}
