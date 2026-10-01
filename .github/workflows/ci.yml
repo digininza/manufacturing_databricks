@@ -94,7 +94,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - uses: actions/setup-java@v4            # a JDK makes the Spark tests (tests/test_spark_*.py) run here
+      - uses: actions/setup-java@v6            # a JDK makes the Spark tests (tests/test_spark_*.py) run here
         with:
           distribution: temurin
           java-version: "17"
