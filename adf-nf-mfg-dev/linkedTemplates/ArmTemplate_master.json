@@ -1,0 +1,147 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "adf-nf-mfg-dev"
+		},
+		"LS_Oracle_ERP_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'LS_Oracle_ERP'",
+			"defaultValue": "host=erp-ora01.northforge.local;port=1521;serviceName=ERPPROD;user id=SVC_ADF_ERP"
+		},
+		"LS_ADLS_Gen2_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://stnfmfgdev.dfs.core.windows.net/"
+		},
+		"LS_AzureSql_ControlDB_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "sql-nf-mfg-dev.database.windows.net"
+		},
+		"LS_AzureSql_ControlDB_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "sqldb-nf-mfg-control"
+		},
+		"LS_KeyVault_properties_typeProperties_baseUrl": {
+			"type": "string",
+			"defaultValue": "https://kv-nf-mfg-dev.vault.azure.net/"
+		},
+		"LS_Rest_CMMS_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://cmms.example.com/api/v1/"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "MES-SQL01.northforge.local"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "MES_PROD"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_userName": {
+			"type": "string",
+			"defaultValue": "svc_adf_mes"
+		},
+		"TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group": {
+			"type": "string",
+			"defaultValue": "DAILY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group": {
+			"type": "string",
+			"defaultValue": "HOURLY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date": {
+			"type": "string",
+			"defaultValue": "@formatDateTime(trigger().outputs.windowStartTime, 'yyyy-MM-dd')"
+		},
+		"containerUri": {
+			"type": "string",
+			"metadata": "URI to storage account containing linked ARM templates"
+		},
+		"containerSasToken": {
+			"type": "string",
+			"metadata": "Sas token to storage account containing linked ARM templates"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "adf-nf-mfg-dev_ArmTemplate_0",
+			"type": "Microsoft.Resources/deployments",
+			"apiVersion": "2024-03-01",
+			"properties": {
+				"mode": "incremental",
+				"templateLink": {
+					"uri": "[concat(parameters('containerUri'), '/ArmTemplate_0.json', parameters('containerSasToken'))]",
+					"contentVersion": "1.0.0.0"
+				},
+				"parameters": {
+					"factoryName": {
+						"value": "[parameters('factoryName')]"
+					},
+					"LS_Oracle_ERP_connectionString": {
+						"value": "[parameters('LS_Oracle_ERP_connectionString')]"
+					},
+					"LS_ADLS_Gen2_properties_typeProperties_url": {
+						"value": "[parameters('LS_ADLS_Gen2_properties_typeProperties_url')]"
+					},
+					"LS_AzureSql_ControlDB_properties_typeProperties_server": {
+						"value": "[parameters('LS_AzureSql_ControlDB_properties_typeProperties_server')]"
+					},
+					"LS_AzureSql_ControlDB_properties_typeProperties_database": {
+						"value": "[parameters('LS_AzureSql_ControlDB_properties_typeProperties_database')]"
+					},
+					"LS_KeyVault_properties_typeProperties_baseUrl": {
+						"value": "[parameters('LS_KeyVault_properties_typeProperties_baseUrl')]"
+					},
+					"LS_Rest_CMMS_properties_typeProperties_url": {
+						"value": "[parameters('LS_Rest_CMMS_properties_typeProperties_url')]"
+					},
+					"LS_SqlServer_MES_properties_typeProperties_server": {
+						"value": "[parameters('LS_SqlServer_MES_properties_typeProperties_server')]"
+					},
+					"LS_SqlServer_MES_properties_typeProperties_database": {
+						"value": "[parameters('LS_SqlServer_MES_properties_typeProperties_database')]"
+					},
+					"LS_SqlServer_MES_properties_typeProperties_userName": {
+						"value": "[parameters('LS_SqlServer_MES_properties_typeProperties_userName')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "adf-nf-mfg-dev_ArmTemplate_1",
+			"type": "Microsoft.Resources/deployments",
+			"apiVersion": "2024-03-01",
+			"properties": {
+				"mode": "incremental",
+				"templateLink": {
+					"uri": "[concat(parameters('containerUri'), '/ArmTemplate_1.json', parameters('containerSasToken'))]",
+					"contentVersion": "1.0.0.0"
+				},
+				"parameters": {
+					"factoryName": {
+						"value": "[parameters('factoryName')]"
+					},
+					"TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group": {
+						"value": "[parameters('TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group')]"
+					},
+					"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group": {
+						"value": "[parameters('TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group')]"
+					},
+					"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date": {
+						"value": "[parameters('TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date')]"
+					}
+				}
+			},
+			"dependsOn": [
+				"[resourceId('Microsoft.Resources/deployments', 'adf-nf-mfg-dev_ArmTemplate_0')]"
+			]
+		}
+	]
+}

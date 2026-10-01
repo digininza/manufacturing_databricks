@@ -1,0 +1,1398 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "adf-nf-mfg-dev"
+		},
+		"TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group": {
+			"type": "string",
+			"defaultValue": "DAILY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group": {
+			"type": "string",
+			"defaultValue": "HOURLY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date": {
+			"type": "string",
+			"defaultValue": "@formatDateTime(trigger().outputs.windowStartTime, 'yyyy-MM-dd')"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_11_Ingest_Oracle')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Oracle ERP. ORACLE_WATERMARK: LAST_UPDATE_DATE window frozen at start. ORACLE_FULL: whole table (has_changes always 1). Same count/validate/publish/watermark contract as every source.",
+				"activities": [
+					{
+						"name": "Get_High_Watermark",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:30:00",
+							"retry": 3,
+							"retryIntervalInSeconds": 120,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "OracleSource",
+								"oracleReaderQuery": {
+									"value": "@if(empty(pipeline().parameters.entity.hwm_query), 'SELECT NULL AS HWM FROM DUAL', pipeline().parameters.entity.hwm_query)",
+									"type": "Expression"
+								},
+								"partitionOption": "None",
+								"queryTimeout": "00:30:00"
+							},
+							"dataset": {
+								"referenceName": "DS_Oracle_ERP",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "Start_Run",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "Get_High_Watermark",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "[[ctl].[usp_start_ingestion_run]",
+								"storedProcedureParameters": {
+									"entity_id": {
+										"type": "Int32",
+										"value": {
+											"value": "@pipeline().parameters.entity.entity_id",
+											"type": "Expression"
+										}
+									},
+									"batch_run_id": {
+										"type": "Int64",
+										"value": {
+											"value": "@pipeline().parameters.batch_run_id",
+											"type": "Expression"
+										}
+									},
+									"adf_pipeline_run_id": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										}
+									},
+									"load_date": {
+										"type": "DateTime",
+										"value": {
+											"value": "@pipeline().parameters.run_date",
+											"type": "Expression"
+										}
+									},
+									"candidate_window_end": {
+										"type": "String",
+										"value": {
+											"value": "@coalesce(activity('Get_High_Watermark').output.firstRow?.HWM, '')",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_ControlDB",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "If_Has_Changes",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Start_Run",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@bool(activity('Start_Run').output.firstRow.has_changes)",
+								"type": "Expression"
+							},
+							"ifFalseActivities": [
+								{
+									"name": "Complete_Run_No_Changes",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "[[ctl].[usp_complete_ingestion_run]",
+										"storedProcedureParameters": {
+											"run_id": {
+												"value": {
+													"value": "@activity('Start_Run').output.firstRow.run_id",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"no_changes": {
+												"value": "true",
+												"type": "Boolean"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "LS_AzureSql_ControlDB",
+										"type": "LinkedServiceReference"
+									}
+								}
+							],
+							"ifTrueActivities": [
+								{
+									"name": "Get_Source_Count",
+									"type": "Lookup",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:30:00",
+										"retry": 3,
+										"retryIntervalInSeconds": 120,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "OracleSource",
+											"oracleReaderQuery": {
+												"value": "@activity('Start_Run').output.firstRow.count_query",
+												"type": "Expression"
+											},
+											"partitionOption": "None",
+											"queryTimeout": "00:30:00"
+										},
+										"dataset": {
+											"referenceName": "DS_Oracle_ERP",
+											"type": "DatasetReference",
+											"parameters": {}
+										},
+										"firstRowOnly": true
+									}
+								},
+								{
+									"name": "Copy_To_Staging",
+									"type": "Copy",
+									"dependsOn": [
+										{
+											"activity": "Get_Source_Count",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.04:00:00",
+										"retry": 3,
+										"retryIntervalInSeconds": 120,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [
+										{
+											"name": "entity",
+											"value": {
+												"value": "@pipeline().parameters.entity.entity_name",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "run_id",
+											"value": {
+												"value": "@activity('Start_Run').output.firstRow.run_id",
+												"type": "Expression"
+											}
+										}
+									],
+									"typeProperties": {
+										"source": {
+											"type": "OracleSource",
+											"oracleReaderQuery": {
+												"value": "@activity('Start_Run').output.firstRow.source_query",
+												"type": "Expression"
+											},
+											"partitionOption": "None",
+											"queryTimeout": "02:00:00"
+										},
+										"sink": {
+											"type": "ParquetSink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings"
+											},
+											"formatSettings": {
+												"type": "ParquetWriteSettings"
+											}
+										},
+										"enableStaging": false,
+										"parallelCopies": 4
+									},
+									"inputs": [
+										{
+											"referenceName": "DS_Oracle_ERP",
+											"type": "DatasetReference",
+											"parameters": {}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "DS_ADLS_Parquet",
+											"type": "DatasetReference",
+											"parameters": {
+												"container": {
+													"value": "@pipeline().parameters.entity.target_container",
+													"type": "Expression"
+												},
+												"folder": {
+													"value": "@concat('_staging/', activity('Start_Run').output.firstRow.target_path)",
+													"type": "Expression"
+												},
+												"file": {
+													"value": "@concat(activity('Start_Run').output.firstRow.run_id, '.parquet')",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								},
+								{
+									"name": "Validate_Counts",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Copy_To_Staging",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "[[ctl].[usp_validate_ingestion_counts]",
+										"storedProcedureParameters": {
+											"run_id": {
+												"value": {
+													"value": "@activity('Start_Run').output.firstRow.run_id",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"source_count": {
+												"value": {
+													"value": "@activity('Get_Source_Count').output.firstRow.SOURCE_COUNT",
+													"type": "Expression"
+												},
+												"type": "Int64"
+											},
+											"rows_read": {
+												"value": {
+													"value": "@activity('Copy_To_Staging').output.rowsRead",
+													"type": "Expression"
+												},
+												"type": "Int64"
+											},
+											"rows_copied": {
+												"value": {
+													"value": "@activity('Copy_To_Staging').output.rowsCopied",
+													"type": "Expression"
+												},
+												"type": "Int64"
+											},
+											"rows_skipped": {
+												"value": {
+													"value": "@coalesce(activity('Copy_To_Staging').output.rowsSkipped, 0)",
+													"type": "Expression"
+												},
+												"type": "Int64"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "LS_AzureSql_ControlDB",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Publish_Staging_To_Raw",
+									"description": "Move validated files from _staging to the path Auto Loader watches. Same run_id => same path => a retry overwrites instead of duplicating.",
+									"type": "Copy",
+									"dependsOn": [
+										{
+											"activity": "Validate_Counts",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.02:00:00",
+										"retry": 3,
+										"retryIntervalInSeconds": 120,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "BinarySource",
+											"storeSettings": {
+												"type": "AzureBlobFSReadSettings",
+												"recursive": true,
+												"deleteFilesAfterCompletion": true
+											},
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											}
+										},
+										"sink": {
+											"type": "BinarySink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings",
+												"copyBehavior": "PreserveHierarchy"
+											}
+										},
+										"enableStaging": false
+									},
+									"inputs": [
+										{
+											"referenceName": "DS_ADLS_Binary",
+											"type": "DatasetReference",
+											"parameters": {
+												"container": {
+													"value": "@pipeline().parameters.entity.target_container",
+													"type": "Expression"
+												},
+												"folder": {
+													"value": "@concat('_staging/', activity('Start_Run').output.firstRow.target_path)",
+													"type": "Expression"
+												}
+											}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "DS_ADLS_Binary",
+											"type": "DatasetReference",
+											"parameters": {
+												"container": {
+													"value": "@pipeline().parameters.entity.target_container",
+													"type": "Expression"
+												},
+												"folder": {
+													"value": "@activity('Start_Run').output.firstRow.target_path",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								},
+								{
+									"name": "Write_Manifest",
+									"description": "Row-count manifest consumed by Databricks ADF_TO_BRONZE reconciliation.",
+									"type": "Copy",
+									"dependsOn": [
+										{
+											"activity": "Publish_Staging_To_Raw",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 3,
+										"retryIntervalInSeconds": 120,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat('SELECT * FROM ctl.vw_run_manifest WHERE run_id = ''', activity('Start_Run').output.firstRow.run_id, '''')",
+												"type": "Expression"
+											},
+											"partitionOption": "None"
+										},
+										"sink": {
+											"type": "JsonSink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings"
+											},
+											"formatSettings": {
+												"type": "JsonWriteSettings",
+												"filePattern": "setOfObjects"
+											}
+										},
+										"enableStaging": false
+									},
+									"inputs": [
+										{
+											"referenceName": "DS_ControlDB",
+											"type": "DatasetReference",
+											"parameters": {}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "DS_ADLS_Json",
+											"type": "DatasetReference",
+											"parameters": {
+												"container": {
+													"value": "@pipeline().parameters.entity.target_container",
+													"type": "Expression"
+												},
+												"folder": {
+													"value": "@concat('_manifests/', pipeline().parameters.entity.entity_name)",
+													"type": "Expression"
+												},
+												"file": {
+													"value": "@concat(activity('Start_Run').output.firstRow.run_id, '.json')",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								},
+								{
+									"name": "Complete_Run_Advance_Watermark",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Write_Manifest",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "[[ctl].[usp_complete_ingestion_run]",
+										"storedProcedureParameters": {
+											"run_id": {
+												"value": {
+													"value": "@activity('Start_Run').output.firstRow.run_id",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"no_changes": {
+												"value": "false",
+												"type": "Boolean"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "LS_AzureSql_ControlDB",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Log_Run_Failure",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "If_Has_Changes",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "[[ctl].[usp_fail_ingestion_run]",
+							"storedProcedureParameters": {
+								"run_id": {
+									"value": {
+										"value": "@activity('Start_Run').output.firstRow.run_id",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"error_message": {
+									"value": {
+										"value": "@activity('If_Has_Changes').error.message",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "LS_AzureSql_ControlDB",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "Send_Failure_Alert",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "Log_Run_Failure",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "PL_90_Send_Alert",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {
+								"severity": {
+									"value": "@pipeline().parameters.entity.alert_severity",
+									"type": "Expression"
+								},
+								"pipeline_name": {
+									"value": "@pipeline().Pipeline",
+									"type": "Expression"
+								},
+								"entity_name": {
+									"value": "@pipeline().parameters.entity.entity_name",
+									"type": "Expression"
+								},
+								"message": {
+									"value": "@activity('If_Has_Changes').error.message",
+									"type": "Expression"
+								},
+								"adf_run_id": {
+									"value": "@pipeline().RunId",
+									"type": "Expression"
+								}
+							}
+						}
+					},
+					{
+						"name": "Fail_Pipeline",
+						"type": "Fail",
+						"dependsOn": [
+							{
+								"activity": "Send_Failure_Alert",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"message": {
+								"value": "@concat('Ingestion failed for ', pipeline().parameters.entity.entity_name, ' run ', activity('Start_Run').output.firstRow.run_id, ': ', activity('If_Has_Changes').error.message)",
+								"type": "Expression"
+							},
+							"errorCode": "INGESTION_FAILED"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"entity": {
+						"type": "object"
+					},
+					"batch_run_id": {
+						"type": "string"
+					},
+					"run_date": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "10_Ingestion"
+				},
+				"annotations": [
+					"ingestion"
+				]
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_01_Ingest_Entity_Router')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Routes one control-table row to the child pipeline for its source_type. New source TYPE = new case; new source TABLE = control-table row only.",
+				"activities": [
+					{
+						"name": "Route_By_Source_Type",
+						"type": "Switch",
+						"dependsOn": [],
+						"userProperties": [],
+						"typeProperties": {
+							"on": {
+								"value": "@pipeline().parameters.entity.source_type",
+								"type": "Expression"
+							},
+							"cases": [
+								{
+									"value": "SQLSERVER_CDC",
+									"activities": [
+										{
+											"name": "Run_SqlServer_CDC",
+											"type": "ExecutePipeline",
+											"dependsOn": [],
+											"policy": {
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"pipeline": {
+													"referenceName": "PL_10_Ingest_SqlServer_CDC",
+													"type": "PipelineReference"
+												},
+												"waitOnCompletion": true,
+												"parameters": {
+													"entity": {
+														"value": "@pipeline().parameters.entity",
+														"type": "Expression"
+													},
+													"batch_run_id": {
+														"value": "@pipeline().parameters.batch_run_id",
+														"type": "Expression"
+													},
+													"run_date": {
+														"value": "@pipeline().parameters.run_date",
+														"type": "Expression"
+													}
+												}
+											}
+										}
+									]
+								},
+								{
+									"value": "ORACLE_WATERMARK",
+									"activities": [
+										{
+											"name": "Run_Oracle_Incremental",
+											"type": "ExecutePipeline",
+											"dependsOn": [],
+											"policy": {
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"pipeline": {
+													"referenceName": "PL_11_Ingest_Oracle",
+													"type": "PipelineReference"
+												},
+												"waitOnCompletion": true,
+												"parameters": {
+													"entity": {
+														"value": "@pipeline().parameters.entity",
+														"type": "Expression"
+													},
+													"batch_run_id": {
+														"value": "@pipeline().parameters.batch_run_id",
+														"type": "Expression"
+													},
+													"run_date": {
+														"value": "@pipeline().parameters.run_date",
+														"type": "Expression"
+													}
+												}
+											}
+										}
+									]
+								},
+								{
+									"value": "ORACLE_FULL",
+									"activities": [
+										{
+											"name": "Run_Oracle_Full",
+											"type": "ExecutePipeline",
+											"dependsOn": [],
+											"policy": {
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"pipeline": {
+													"referenceName": "PL_11_Ingest_Oracle",
+													"type": "PipelineReference"
+												},
+												"waitOnCompletion": true,
+												"parameters": {
+													"entity": {
+														"value": "@pipeline().parameters.entity",
+														"type": "Expression"
+													},
+													"batch_run_id": {
+														"value": "@pipeline().parameters.batch_run_id",
+														"type": "Expression"
+													},
+													"run_date": {
+														"value": "@pipeline().parameters.run_date",
+														"type": "Expression"
+													}
+												}
+											}
+										}
+									]
+								},
+								{
+									"value": "REST_API",
+									"activities": [
+										{
+											"name": "Run_Rest_Api",
+											"type": "ExecutePipeline",
+											"dependsOn": [],
+											"policy": {
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"pipeline": {
+													"referenceName": "PL_12_Ingest_RestApi",
+													"type": "PipelineReference"
+												},
+												"waitOnCompletion": true,
+												"parameters": {
+													"entity": {
+														"value": "@pipeline().parameters.entity",
+														"type": "Expression"
+													},
+													"batch_run_id": {
+														"value": "@pipeline().parameters.batch_run_id",
+														"type": "Expression"
+													},
+													"run_date": {
+														"value": "@pipeline().parameters.run_date",
+														"type": "Expression"
+													}
+												}
+											}
+										}
+									]
+								},
+								{
+									"value": "ADLS_FILE",
+									"activities": [
+										{
+											"name": "Run_ADLS_Files",
+											"type": "ExecutePipeline",
+											"dependsOn": [],
+											"policy": {
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"pipeline": {
+													"referenceName": "PL_13_Ingest_ADLS_Files",
+													"type": "PipelineReference"
+												},
+												"waitOnCompletion": true,
+												"parameters": {
+													"entity": {
+														"value": "@pipeline().parameters.entity",
+														"type": "Expression"
+													},
+													"batch_run_id": {
+														"value": "@pipeline().parameters.batch_run_id",
+														"type": "Expression"
+													},
+													"run_date": {
+														"value": "@pipeline().parameters.run_date",
+														"type": "Expression"
+													}
+												}
+											}
+										}
+									]
+								}
+							],
+							"defaultActivities": [
+								{
+									"name": "Unknown_Source_Type",
+									"type": "Fail",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"message": {
+											"value": "@concat('Unknown source_type in control table: ', pipeline().parameters.entity.source_type)",
+											"type": "Expression"
+										},
+										"errorCode": "BAD_METADATA"
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"entity": {
+						"type": "object"
+					},
+					"batch_run_id": {
+						"type": "string"
+					},
+					"run_date": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "00_Orchestration"
+				},
+				"annotations": [
+					"orchestration"
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/PL_11_Ingest_Oracle')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_00_Master_Orchestrator')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Metadata-driven master. Reads ctl.ingestion_control for the batch group, skips entities already successful for run_date (rerun-from-failure), fans out in parallel, closes the batch, triggers Databricks, alerts on any failure.",
+				"activities": [
+					{
+						"name": "Set_Run_Date",
+						"type": "SetVariable",
+						"dependsOn": [],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "v_run_date",
+							"value": {
+								"value": "@if(empty(pipeline().parameters.run_date), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.run_date)",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "Start_Batch",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "Set_Run_Date",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "[[ctl].[usp_start_batch]",
+								"storedProcedureParameters": {
+									"batch_group": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().parameters.batch_group",
+											"type": "Expression"
+										}
+									},
+									"run_date": {
+										"type": "DateTime",
+										"value": {
+											"value": "@variables('v_run_date')",
+											"type": "Expression"
+										}
+									},
+									"adf_pipeline_run_id": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_ControlDB",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "Get_Pending_Entities",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "Start_Batch",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "[[ctl].[usp_get_pending_entities]",
+								"storedProcedureParameters": {
+									"batch_group": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().parameters.batch_group",
+											"type": "Expression"
+										}
+									},
+									"run_date": {
+										"type": "DateTime",
+										"value": {
+											"value": "@variables('v_run_date')",
+											"type": "Expression"
+										}
+									},
+									"force_rerun": {
+										"type": "Boolean",
+										"value": {
+											"value": "@pipeline().parameters.force_rerun",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_ControlDB",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "ForEach_Entity",
+						"description": "Parallel (4 at a time). One entity failing does NOT stop the others; ForEach reports Failed at the end if any failed.",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Get_Pending_Entities",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('Get_Pending_Entities').output.value",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"batchCount": 4,
+							"activities": [
+								{
+									"name": "Ingest_Entity",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "PL_01_Ingest_Entity_Router",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"entity": {
+												"value": "@item()",
+												"type": "Expression"
+											},
+											"batch_run_id": {
+												"value": "@string(activity('Start_Batch').output.firstRow.batch_run_id)",
+												"type": "Expression"
+											},
+											"run_date": {
+												"value": "@variables('v_run_date')",
+												"type": "Expression"
+											}
+										}
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Complete_Batch",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "ForEach_Entity",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "[[ctl].[usp_complete_batch]",
+								"storedProcedureParameters": {
+									"batch_run_id": {
+										"type": "Int64",
+										"value": {
+											"value": "@activity('Start_Batch').output.firstRow.batch_run_id",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_ControlDB",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "If_Trigger_Databricks",
+						"description": "Trigger Databricks even on PARTIAL failure: healthy entities flow on; failed ones are simply absent (no manifest) and are picked up after the rerun.",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Complete_Batch",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@and(pipeline().parameters.trigger_databricks, greater(int(activity('Complete_Batch').output.firstRow.entities_succeeded), 0))",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Run_Databricks_Job",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "PL_30_Run_Databricks_Job",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"batch_group": {
+												"value": "@pipeline().parameters.batch_group",
+												"type": "Expression"
+											},
+											"run_date": {
+												"value": "@variables('v_run_date')",
+												"type": "Expression"
+											}
+										}
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "If_Batch_Had_Failures",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Complete_Batch",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@not(equals(activity('Complete_Batch').output.firstRow.status, 'SUCCESS'))",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Batch_Failure_Alert",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "PL_90_Send_Alert",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"severity": "HIGH",
+											"pipeline_name": {
+												"value": "@pipeline().Pipeline",
+												"type": "Expression"
+											},
+											"entity_name": "BATCH",
+											"message": {
+												"value": "@concat('Batch ', pipeline().parameters.batch_group, ' ', variables('v_run_date'), ' finished with status ', activity('Complete_Batch').output.firstRow.status, ': ', string(activity('Complete_Batch').output.firstRow.entities_failed), ' entity(ies) failed. Rerun PL_00 - completed entities are skipped automatically.')",
+												"type": "Expression"
+											},
+											"adf_run_id": {
+												"value": "@pipeline().RunId",
+												"type": "Expression"
+											}
+										}
+									}
+								},
+								{
+									"name": "Fail_Master",
+									"type": "Fail",
+									"dependsOn": [
+										{
+											"activity": "Batch_Failure_Alert",
+											"dependencyConditions": [
+												"Completed"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"message": {
+											"value": "@concat('Batch finished with status ', activity('Complete_Batch').output.firstRow.status)",
+											"type": "Expression"
+										},
+										"errorCode": "BATCH_PARTIAL_FAILURE"
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"batch_group": {
+						"type": "string",
+						"defaultValue": "DAILY"
+					},
+					"run_date": {
+						"type": "string"
+					},
+					"force_rerun": {
+						"type": "bool",
+						"defaultValue": false
+					},
+					"trigger_databricks": {
+						"type": "bool",
+						"defaultValue": true
+					}
+				},
+				"variables": {
+					"v_run_date": {
+						"type": "String"
+					}
+				},
+				"folder": {
+					"name": "00_Orchestration"
+				},
+				"annotations": [
+					"orchestration"
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/PL_01_Ingest_Entity_Router')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/TR_Daily_0200_UTC')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Daily batch: masters + ERP + API + files (+ MES tables in the DAILY group).",
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "PL_00_Master_Orchestrator",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"batch_group": "[parameters('TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group')]"
+						}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 1,
+						"startTime": "2026-09-01T02:00:00Z",
+						"timeZone": "UTC",
+						"schedule": {
+							"minutes": [
+								0
+							],
+							"hours": [
+								2
+							]
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/PL_00_Master_Orchestrator')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/TR_Hourly_MES_Tumbling')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Hourly MES CDC. Tumbling window: each window runs exactly once, retried automatically, and the self-dependency guarantees window N never starts before window N-1 succeeded (ordered CDC).",
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipeline": {
+					"pipelineReference": {
+						"referenceName": "PL_00_Master_Orchestrator",
+						"type": "PipelineReference"
+					},
+					"parameters": {
+						"batch_group": "[parameters('TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group')]",
+						"run_date": "[parameters('TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date')]"
+					}
+				},
+				"type": "TumblingWindowTrigger",
+				"typeProperties": {
+					"frequency": "Hour",
+					"interval": 1,
+					"startTime": "2026-09-01T00:00:00Z",
+					"delay": "00:05:00",
+					"maxConcurrency": 1,
+					"retryPolicy": {
+						"count": 2,
+						"intervalInSeconds": 300
+					},
+					"dependsOn": [
+						{
+							"type": "SelfDependencyTumblingWindowTriggerReference",
+							"size": "01:00:00",
+							"offset": "-01:00:00"
+						}
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/PL_00_Master_Orchestrator')]"
+			]
+		}
+	]
+}

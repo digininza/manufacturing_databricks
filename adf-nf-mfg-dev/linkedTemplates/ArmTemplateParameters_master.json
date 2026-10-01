@@ -1,0 +1,51 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "adf-nf-mfg-dev"
+		},
+		"LS_Oracle_ERP_connectionString": {
+			"value": "host=erp-ora01.northforge.local;port=1521;serviceName=ERPPROD;user id=SVC_ADF_ERP"
+		},
+		"LS_ADLS_Gen2_properties_typeProperties_url": {
+			"value": "https://stnfmfgdev.dfs.core.windows.net/"
+		},
+		"LS_AzureSql_ControlDB_properties_typeProperties_server": {
+			"value": "sql-nf-mfg-dev.database.windows.net"
+		},
+		"LS_AzureSql_ControlDB_properties_typeProperties_database": {
+			"value": "sqldb-nf-mfg-control"
+		},
+		"LS_KeyVault_properties_typeProperties_baseUrl": {
+			"value": "https://kv-nf-mfg-dev.vault.azure.net/"
+		},
+		"LS_Rest_CMMS_properties_typeProperties_url": {
+			"value": "https://cmms.example.com/api/v1/"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_server": {
+			"value": "MES-SQL01.northforge.local"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_database": {
+			"value": "MES_PROD"
+		},
+		"LS_SqlServer_MES_properties_typeProperties_userName": {
+			"value": "svc_adf_mes"
+		},
+		"TR_Daily_0200_UTC_properties_PL_00_Master_Orchestrator_parameters_batch_group": {
+			"value": "DAILY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_batch_group": {
+			"value": "HOURLY"
+		},
+		"TR_Hourly_MES_Tumbling_properties_pipeline_parameters_run_date": {
+			"value": "@formatDateTime(trigger().outputs.windowStartTime, 'yyyy-MM-dd')"
+		},
+		"containerUri": {
+			"value": ""
+		},
+		"containerSasToken": {
+			"value": ""
+		}
+	}
+}
