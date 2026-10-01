@@ -3,7 +3,7 @@
 # automatically when pyspark or a JDK (11/17) is not available.
 # Project standard is Python 3.11 (CI). Markers keep a local Python 3.9 venv installable.
 -r requirements.txt
-pyspark==3.5.8
+pyspark==4.2.0
 delta-spark==3.2.0
 pytest==9.0.3; python_version >= "3.10"
 pytest==8.4.2; python_version < "3.10"
