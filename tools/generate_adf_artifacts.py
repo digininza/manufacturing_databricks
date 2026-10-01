@@ -141,9 +141,12 @@ write(
     "LS_Oracle_ERP",
     {
         "type": "Oracle",
-        "description": "On-prem Oracle ERP via self-hosted IR. Read-only user; password from Key Vault.",
+        "version": "2.0",  # current Oracle connector; the 1.0 connection-string form is deprecated
+        "description": "On-prem Oracle ERP via self-hosted IR (Oracle connector v2.0). Read-only user; password from Key Vault.",
         "typeProperties": {
-            "connectionString": "Host=erp-ora01.northforge.local;Port=1521;ServiceName=ERPPROD;User Id=SVC_ADF_ERP;",
+            "server": "erp-ora01.northforge.local:1521/ERPPROD",  # host:port/service_name
+            "authenticationType": "Basic",
+            "username": "SVC_ADF_ERP",
             "password": kv_secret("erp-oracle-password"),
         },
         "connectVia": {"referenceName": "IR-SelfHosted-OnPrem", "type": "IntegrationRuntimeReference"},
