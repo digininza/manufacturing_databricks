@@ -6,7 +6,7 @@ from src.common.config import EntityConfig, load_config, load_registry, validate
 
 
 def test_all_environments_load_and_have_no_secrets(repo_root):
-    for env in ("dev", "test", "prod", "local_test"):
+    for env in ("dev", "test", "prod", "local_test", "sandbox"):
         cfg = load_config(env)
         assert cfg.environment == env
         text = (repo_root / "configs" / f"{env}.yml").read_text().lower()

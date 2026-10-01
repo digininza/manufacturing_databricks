@@ -27,11 +27,38 @@ variables:
     default: REPLACE_WITH_PBI_WORKSPACE_ID
   powerbi_dataset_id:
     default: REPLACE_WITH_PBI_DATASET_ID
+  file_arrival_url:
+    description: Folder watched by the (paused) file-arrival trigger of the batch job
+    default: abfss://raw@stnfmfgdev.dfs.core.windows.net/_manifests/
+  batch_max_workers:
+    default: 6
+  maintenance_max_workers:
+    default: 8
+  streaming_workers:
+    default: 2
+  schedule_pause_status:
+    description: PAUSED or UNPAUSED for the weekly maintenance schedule
+    default: UNPAUSED
 
 include:
   - resources/jobs/*.yml
 
 targets:
+  # Personal Azure Databricks workspace for viewing/demo. Pay-as-you-go => NOTHING runs on its own:
+  # development mode pauses every schedule/trigger, and they are also pinned to PAUSED below.
+  # Clusters are sized to the minimum and only start if someone presses "Run now".
+  sandbox:
+    mode: development
+    workspace:
+      host: https://adb-7405606599541686.6.azuredatabricks.net
+    variables:
+      environment: sandbox
+      file_arrival_url: /Volumes/db_nf_mfg_dev/landing/raw/_manifests/
+      batch_max_workers: 1
+      maintenance_max_workers: 1
+      streaming_workers: 1
+      schedule_pause_status: PAUSED
+
   dev:
     mode: development
     default: true

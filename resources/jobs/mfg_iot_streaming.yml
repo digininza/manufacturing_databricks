@@ -25,7 +25,7 @@ resources:
           new_cluster:
             spark_version: ${var.spark_version}
             node_type_id: ${var.node_type}
-            num_workers: 2
+            num_workers: ${var.streaming_workers}
             data_security_mode: SINGLE_USER
             spark_conf:
               spark.sql.streaming.stateStore.providerClass: com.databricks.sql.streaming.state.RocksDBStateStoreProvider

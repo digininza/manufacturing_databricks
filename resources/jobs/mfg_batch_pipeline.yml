@@ -31,7 +31,7 @@ resources:
       trigger:
         pause_status: PAUSED             # ADF is the primary orchestrator; unpause for event-driven fallback
         file_arrival:
-          url: abfss://raw@stnfmfg${var.environment}.dfs.core.windows.net/_manifests/
+          url: ${var.file_arrival_url}
           min_time_between_triggers_seconds: 900
 
       job_clusters:
@@ -39,7 +39,9 @@ resources:
           new_cluster:
             spark_version: ${var.spark_version}
             node_type_id: ${var.node_type}
-            autoscale: {min_workers: 1, max_workers: 6}
+            autoscale:
+              min_workers: 1
+              max_workers: ${var.batch_max_workers}
             data_security_mode: SINGLE_USER
             runtime_engine: PHOTON
             spark_conf:

@@ -1,0 +1,67 @@
+# NorthForge Industries — SANDBOX environment: Azure Databricks workspace adb-7405606599541686 (view/demo).
+# Storage = Unity Catalog Volumes inside the workspace catalog (no ADLS account / external location needed).
+# NO SECRETS IN THIS FILE. Anything sensitive is referenced by
+# (secret_scope, secret_key) and resolved at runtime from the Azure Key
+# Vault-backed Databricks secret scope. All hostnames are placeholders.
+
+environment: sandbox
+
+unity_catalog:
+  catalog: db_nf_mfg_dev   # the workspace catalog Azure created; no extra catalog needed
+  schemas:
+    control: control        # run log, audit, DQ results, reconciliation, watermarks
+    bronze: bronze          # raw, append-only, as landed by ADF / Event Hub
+    silver: silver          # cleansed, deduplicated, CDC-applied, conformed
+    quarantine: quarantine  # rows that failed ERROR-severity DQ rules
+    gold: gold              # star schema (facts + SCD2 dimensions)
+
+storage:
+  # Unity Catalog managed volumes (db_nf_mfg_dev.landing.raw / .checkpoints). In dev/test/prod
+  # these are abfss:// ADLS paths behind external locations instead.
+  raw_root: /Volumes/db_nf_mfg_dev/landing/raw
+  manifest_root: /Volumes/db_nf_mfg_dev/landing/raw/_manifests
+  checkpoint_root: /Volumes/db_nf_mfg_dev/landing/checkpoints
+  schema_root: /Volumes/db_nf_mfg_dev/landing/checkpoints/_schemas
+
+eventhub:
+  namespace: evhns-nf-mfg-sandbox
+  hub_name: machine-telemetry
+  consumer_group: databricks-bronze
+  secret_scope: kv-nf-mfg-sandbox
+  secret_key: eventhub-machine-telemetry-listen-conn
+  max_events_per_trigger: 50000
+  starting_offsets: latest
+
+streaming:
+  late_data_watermark: "10 minutes"   # how late a sensor reading may arrive
+  aggregation_window: "1 minute"
+  bronze_trigger_seconds: 30
+  silver_trigger_seconds: 60
+
+snowflake:
+  url: REPLACE_WITH_ACCOUNT.snowflakecomputing.com
+  user: SVC_DATABRICKS_PUBLISHER
+  role: MFG_PUBLISHER_ROLE
+  warehouse: WH_MFG_LOAD
+  database: MFG_DW_SANDBOX
+  schema: GOLD
+  stage_schema: STAGE
+  secret_scope: kv-nf-mfg-sandbox
+  private_key_secret: snowflake-publisher-private-key   # key-pair auth, no passwords
+
+reconciliation:
+  # Row-count tolerance (absolute). 0 = counts must match exactly before any
+  # watermark/checkpoint is allowed to advance.
+  count_tolerance: 0
+  # Relative tolerance for SUM(measure) checks (floating point / rounding).
+  amount_tolerance_pct: 0.0001
+
+alerting:
+  secret_scope: kv-nf-mfg-sandbox
+  webhook_secret_key: logicapp-alert-webhook-url   # Logic App -> Email + Teams
+  distribution_list: mfg-data-platform-alerts@example.com
+
+gold:
+  planned_minutes_per_shift: 480
+  shifts_per_day: 3
+  unknown_member_sk: -1

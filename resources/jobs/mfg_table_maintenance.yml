@@ -6,7 +6,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 3 ? * SUN"   # weekly, outside the 02:00-06:00 batch window
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
       email_notifications:
         on_failure: ["${var.notification_email}"]
       parameters:
@@ -16,7 +16,9 @@ resources:
           new_cluster:
             spark_version: ${var.spark_version}
             node_type_id: ${var.node_type}      # compute-optimized is fine; OPTIMIZE is CPU (compression) + I/O bound
-            autoscale: {min_workers: 2, max_workers: 8}
+            autoscale:
+              min_workers: 1
+              max_workers: ${var.maintenance_max_workers}
             data_security_mode: SINGLE_USER
             runtime_engine: PHOTON              # Photon speeds up OPTIMIZE rewrites significantly
       tasks:
