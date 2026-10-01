@@ -24,7 +24,7 @@ jobs:
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - name: Download the tested artifact from CI (not a rebuild)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: northforge-mfg-${{ inputs.sha }}
           run-id: ${{ inputs.ci_run_id }}
